@@ -215,10 +215,6 @@ class SAKELayer(EGNNLayer):
             torch.nn.Linear(hidden_features, out_features)
         )
 
-    def _coordinate_send(self, edges):
-        # (n_edges, space_dimension)
-        return {'x_msg': edges.src['x']}
-
     def _coordinate_attention(self, nodes):
         # (n_nodes, n_in, space_dimension)
         x_msg = nodes.mailbox['x_msg']
@@ -276,12 +272,14 @@ class SAKELayer(EGNNLayer):
         # get local copy of the graph
         graph = graph.local_var()
 
-        # conduct spatial attention
-        graph.send(message_func=self._coordinate_send)
-        graph.recv(reduction_func=self._coordinate_attention)
-
         # put features and coordinates into graph
         graph.ndata["h_v"], graph.ndata["x"] = feat, coordinate
+
+        # conduct spatial attention
+        graph.update_all(
+            message_func=dgl.function.copy_src("x", "x_msg"),
+            reduce_func=self._coordinate_attention,
+        )
 
         # apply representation update on edge
         # Eq. 3 in "E(n) Equivariant Graph Neural Networks"

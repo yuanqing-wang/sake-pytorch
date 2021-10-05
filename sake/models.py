@@ -1,7 +1,7 @@
 import torch
 import dgl
 from typing import Callable
-from .layers import EGNNLayer
+from .layers import EGNNLayer, SAKELayer
 
 class EGNN(torch.nn.Module):
     """ E(n) Equivariant Graph Neural Networks.
@@ -23,6 +23,7 @@ class EGNN(torch.nn.Module):
         depth=4,
         edge_features=0,
         activation=torch.nn.SiLU(),
+        layer=EGNNLayer,
     ):
         super(EGNN, self).__init__()
         self.in_features = in_features
@@ -35,7 +36,7 @@ class EGNN(torch.nn.Module):
 
         for idx in range(0, depth):
             self.add_module(
-                "EGNNLayer_%s" % idx, EGNNLayer(
+                "EqLayer_%s" % idx, layer(
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
@@ -67,7 +68,7 @@ class EGNN(torch.nn.Module):
         graph = graph.local_var()
         feat = self.embedding_in(feat)
         for idx in range(self.depth):
-            feat, coordinate = self._modules["EGNNLayer_%s" % idx](
+            feat, coordinate = self._modules["EqLayer_%s" % idx](
                 graph, feat, coordinate, velocity
             )
         feat = self.embedding_out(feat)
