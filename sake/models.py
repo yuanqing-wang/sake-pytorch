@@ -43,7 +43,7 @@ class EGNN(torch.nn.Module):
                 )
             )
 
-    def forward(self, graph, feat, coordinate):
+    def forward(self, graph, feat, coordinate, velocity=None):
         """ Forward pass.
 
         Parameters
@@ -68,7 +68,7 @@ class EGNN(torch.nn.Module):
         feat = self.embedding_in(feat)
         for idx in range(self.depth):
             feat, coordinate = self._modules["EGNNLayer_%s" % idx](
-                graph, feat, coordinate
+                graph, feat, coordinate, velocity
             )
         feat = self.embedding_out(feat)
         return feat, coordinate
