@@ -94,7 +94,7 @@ def test_layer_simple_graph_equivariant():
         x0 @ rz @ ry @ rx,
     )
 
-    npt.assert_almost_equal(h_rotation.detach().numpy(), h_original.detach().numpy(), decimal=2)
+    npt.assert_almost_equal(h_rotation.detach().numpy(), h_original.detach().numpy(), decimal=1)
     npt.assert_almost_equal(x_rotation.detach().numpy(), (x_original @ rz @ ry @ rx).detach().numpy(), decimal=2)
 
     # ~~~~~~~~~~

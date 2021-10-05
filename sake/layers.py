@@ -29,6 +29,7 @@ class EGNNLayer(torch.nn.Module):
         in_features : int,
         hidden_features: int,
         out_features : int,
+        edge_features: int=0,
         activation : Callable=torch.nn.SiLU(),
         space_dimension : int=3,
     ):
@@ -37,6 +38,7 @@ class EGNNLayer(torch.nn.Module):
         self.in_features = in_features
         self.hidden_features = hidden_features
         self.out_features = out_features
+        self.edge_features = edge_features
         self.activation = activation
         self.space_dimension = space_dimension
 
@@ -48,7 +50,7 @@ class EGNNLayer(torch.nn.Module):
 
         self.edge_mlp = torch.nn.Sequential(
             torch.nn.Linear(
-                in_features * 2 + 1,
+                edge_features + in_features * 2 + 1,
                 hidden_features
             ),
             activation,
@@ -73,7 +75,8 @@ class EGNNLayer(torch.nn.Module):
         return {"h_e":
             self.edge_mlp(
                 torch.cat(
-                    [
+                    [edge.data["h_e_0"] for _ in range(int(self.edge_features>0))]
+                    + [
                         edge.src["h_v"],
                         edge.dst["h_v"],
                         (edge.src["x"] - edge.dst["x"]).pow(2).sum(
@@ -118,7 +121,9 @@ class EGNNLayer(torch.nn.Module):
             "v": v
         }
 
-    def forward(self, graph, feat, coordinate, velocity=None):
+    def forward(
+            self, graph, feat, coordinate, velocity=None, edge_feat=None
+        ):
         """ Forward pass.
 
         Parameters
@@ -146,6 +151,10 @@ class EGNNLayer(torch.nn.Module):
 
         # put features and coordinates into graph
         graph.ndata["h_v"], graph.ndata["x"] = feat, coordinate
+
+        # put edge features into graph
+        if edge_feat is not None:
+            graph.edata["h_e_0"] = edge_feat
 
         # apply representation update on edge
         # Eq. 3 in "E(n) Equivariant Graph Neural Networks"
