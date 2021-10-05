@@ -181,3 +181,139 @@ class EGNNLayer(torch.nn.Module):
         coordinate = graph.ndata["x"]
 
         return feat, coordinate
+
+
+class SAKELayer(EGNNLayer):
+    """ A SAKE Layer. """
+    def __init__(
+        self,
+        in_features : int,
+        hidden_features: int,
+        out_features : int,
+        activation : Callable=torch.nn.SiLU(),
+        space_dimension : int=3,
+    ):
+        super(SAKELayer, self).__init__(
+            in_features=in_features,
+            hidden_features=hidden_features,
+            out_features=out_features,
+            activation=activation,
+            space_dimension=space_dimension,
+        )
+
+        self.delta_coordinate_model = torch.nn.Sequential(
+            torch.nn.Linear(1, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+
+        self.node_mlp = torch.nn.Sequential(
+            torch.nn.Linear(2*hidden_features + in_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, out_features)
+        )
+
+    def _coordinate_send(self, edges):
+        # (n_edges, space_dimension)
+        return {'x_msg': edges.src['x']}
+
+    def _coordinate_attention(self, nodes):
+        # (n_nodes, n_in, space_dimension)
+        x_msg = nodes.mailbox['x_msg']
+
+        # (n_nodes, n_in, n_in)
+        delta_x_msg = (x_msg[:, None, :, :] - x_msg[:, :, None, :]).pow(2).sum(dim=1)
+
+        # (n_nodes, n_in, n_in, hidden_dimension)
+        delta_x_msg = self.delta_coordinate_model(
+            delta_x_msg[:, :, :, None]
+        )
+
+        # (n_nodes, hidden_dimension)
+        h_delta_x = torch.sum(delta_x_msg, (1, 2))
+
+        return {'h_delta_x': h_delta_x}
+
+    def _node_model(self, node):
+        return {"h_v":
+            self.node_mlp(
+                torch.cat(
+                    [
+                        node.data["h_v"],
+                        node.data["h_agg"],
+                        node.data['h_delta_x'],
+                    ],
+                    dim=-1,
+                )
+            )
+        }
+
+    def forward(self, graph, feat, coordinate, velocity=None):
+        """ Forward pass.
+
+        Parameters
+        ----------
+        graph : dgl.DGLGraph
+            Input graph.
+
+        feat : torch.Tensor
+            Input features.
+
+        coordinate : torch.Tensor
+            Input coordinates.
+
+        velocity : torch.Tensor
+            Input velocity.
+
+        Returns
+        -------
+        torch.Tensor : Output features.
+
+        torch.Tensor : Output coordinates.
+        """
+        # get local copy of the graph
+        graph = graph.local_var()
+
+        # conduct spatial attention
+        graph.send(message_func=self._coordinate_send)
+        graph.recv(reduction_func=self._coordinate_attention)
+
+        # put features and coordinates into graph
+        graph.ndata["h_v"], graph.ndata["x"] = feat, coordinate
+
+        # apply representation update on edge
+        # Eq. 3 in "E(n) Equivariant Graph Neural Networks"
+        graph.apply_edges(func=self._edge_model)
+
+        # apply coordinate update on edge
+        graph.apply_edges(func=self._coordinate_edge_model)
+
+        # aggregate coordinate update
+        graph.update_all(
+            dgl.function.copy_e("x_e", "x_msg"),
+            dgl.function.sum("x_msg", "x_agg"),
+        )
+
+        # apply coordinate update on nodes
+        if velocity is not None:
+            graph.ndata["v"] = velocity
+            graph.apply_nodes(func=self._velocity_and_coordinate_node_model)
+        else:
+            graph.apply_nodes(func=self._coordinate_node_model)
+
+        ## aggregate representation update
+        graph.update_all(
+            dgl.function.copy_e("h_e", "h_msg"),
+            dgl.function.sum("h_msg", "h_agg"),
+        )
+
+        # apply representation update on nodes
+        graph.apply_nodes(func=self._node_model)
+
+        # pull features
+        feat = graph.ndata["h_v"]
+        coordinate = graph.ndata["x"]
+
+        return feat, coordinate
