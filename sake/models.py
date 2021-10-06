@@ -41,6 +41,7 @@ class EGNN(torch.nn.Module):
                     hidden_features=hidden_features,
                     out_features=hidden_features,
                     activation=activation,
+                    edge_features=edge_features,
                 )
             )
 

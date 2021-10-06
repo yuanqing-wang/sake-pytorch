@@ -257,7 +257,9 @@ class SAKELayer(EGNNLayer):
             )
         }
 
-    def forward(self, graph, feat, coordinate, velocity=None, edge_feat=None):
+    def forward(
+            self, graph, feat, coordinate, velocity=None, edge_feat=None,
+        ):
         """ Forward pass.
 
         Parameters
