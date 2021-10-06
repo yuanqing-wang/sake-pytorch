@@ -199,6 +199,7 @@ class SAKELayer(EGNNLayer):
         in_features : int,
         hidden_features: int,
         out_features : int,
+        edge_features: int=0,
         activation : Callable=torch.nn.SiLU(),
         space_dimension : int=3,
     ):
@@ -208,6 +209,7 @@ class SAKELayer(EGNNLayer):
             out_features=out_features,
             activation=activation,
             space_dimension=space_dimension,
+            edge_features=edge_features,
         )
 
         self.delta_coordinate_model = torch.nn.Sequential(
@@ -255,7 +257,7 @@ class SAKELayer(EGNNLayer):
             )
         }
 
-    def forward(self, graph, feat, coordinate, velocity=None):
+    def forward(self, graph, feat, coordinate, velocity=None, edge_feat=None):
         """ Forward pass.
 
         Parameters
@@ -283,6 +285,10 @@ class SAKELayer(EGNNLayer):
 
         # put features and coordinates into graph
         graph.ndata["h_v"], graph.ndata["x"] = feat, coordinate
+
+        # put edge features into graph
+        if edge_feat is not None:
+            graph.edata["h_e_0"] = edge_feat
 
         # conduct spatial attention
         graph.update_all(
