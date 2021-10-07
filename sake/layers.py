@@ -273,7 +273,7 @@ class SAKELayer(EGNNLayer):
         id_msg = nodes.mailbox['id_msg']
 
         # pad id
-        id_msg = torch.cat([id_msg, -1*torch.ones(x_msg.shape[0], pad_value, dtype=id_msg.dtype)], dim=-1)
+        id_msg = torch.cat([id_msg, -1*torch.ones(x_msg.shape[0], pad_value, dtype=id_msg.dtype, device=id_msg.dtype)], dim=-1)
 
         assert id_msg.shape[0] == h_delta_x.shape[0]
 
