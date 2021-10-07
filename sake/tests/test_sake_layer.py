@@ -24,7 +24,7 @@ def test_layer_simple_graph_equivariant():
     import torch
     import dgl
     import sake
-    g = dgl.rand_graph(5, 8)
+    g = dgl.rand_graph(5, 15)
     h0 = torch.distributions.Normal(
         torch.zeros(5, 7),
         torch.ones(5, 7),
@@ -123,7 +123,7 @@ def test_layer_simple_graph_equivariant_with_edge():
     import torch
     import dgl
     import sake
-    g = dgl.rand_graph(5, 8)
+    g = dgl.rand_graph(5, 15)
     h0 = torch.distributions.Normal(
         torch.zeros(5, 7),
         torch.ones(5, 7),
@@ -135,7 +135,7 @@ def test_layer_simple_graph_equivariant_with_edge():
     layer = sake.SAKELayer(in_features=7, hidden_features=8, out_features=9, edge_features=1)
 
     # original
-    h_original, x_original = layer(g, h0, x0, edge_feat=torch.zeros(8, 1))
+    h_original, x_original = layer(g, h0, x0, edge_feat=torch.zeros(15, 1))
 
     # ~~~~~~~~~~~
     # translation
@@ -149,7 +149,7 @@ def test_layer_simple_graph_equivariant_with_edge():
         g,
         h0,
         x0 + translation,
-        edge_feat=torch.zeros(8, 1)
+        edge_feat=torch.zeros(15, 1)
     )
 
     npt.assert_almost_equal(h_translation.detach().numpy(), h_original.detach().numpy(), decimal=2)
@@ -192,7 +192,7 @@ def test_layer_simple_graph_equivariant_with_edge():
         g,
         h0,
         x0 @ rz @ ry @ rx,
-        edge_feat=torch.zeros(8, 1),
+        edge_feat=torch.zeros(15, 1),
     )
 
     npt.assert_almost_equal(h_rotation.detach().numpy(), h_original.detach().numpy(), decimal=2)
@@ -213,7 +213,7 @@ def test_layer_simple_graph_equivariant_with_edge():
         g,
         h0,
         x0 @ p,
-        edge_feat=torch.zeros(8, 1),
+        edge_feat=torch.zeros(15, 1),
     )
 
     npt.assert_almost_equal(h_reflection.detach().numpy(), h_original.detach().numpy(), decimal=2)

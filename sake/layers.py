@@ -202,6 +202,7 @@ class SAKELayer(EGNNLayer):
         edge_features: int=0,
         activation : Callable=torch.nn.SiLU(),
         space_dimension : int=3,
+        max_in_degree: int=10,
     ):
         super(SAKELayer, self).__init__(
             in_features=in_features,
@@ -226,22 +227,81 @@ class SAKELayer(EGNNLayer):
             torch.nn.Linear(hidden_features, out_features)
         )
 
+        self.edge_mlp = torch.nn.Sequential(
+            torch.nn.Linear(
+                hidden_features + edge_features + in_features * 2 + 1,
+                hidden_features
+            ),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+        )
+
+        self.max_in_degree = max_in_degree
+
+    def _copy_x_and_id(self, edges):
+        return {'x_msg': edges.src['x'], 'id_msg': edges.edges()[2]}
+
     def _coordinate_attention(self, nodes):
         # (n_nodes, n_in, space_dimension)
         x_msg = nodes.mailbox['x_msg']
 
         # (n_nodes, n_in, n_in)
-        delta_x_msg = (x_msg[:, None, :, :] - x_msg[:, :, None, :]).pow(2).sum(dim=1)
+        delta_x_msg = (x_msg[:, None, :, :] - x_msg[:, :, None, :]).pow(2).sum(dim=-1)
 
         # (n_nodes, n_in, n_in, hidden_dimension)
-        delta_x_msg = self.delta_coordinate_model(
+        h_delta_x = self.delta_coordinate_model(
             delta_x_msg[:, :, :, None]
-        ).tanh()
+        )
 
-        # (n_nodes, hidden_dimension)
-        h_delta_x = torch.sum(delta_x_msg, (1, 2))
+        # transposte so that channel is 1 dim
+        h_delta_x = h_delta_x.permute(0, 3, 1, 2)
 
-        return {'h_delta_x': h_delta_x}
+        # padding
+        pad_value = self.max_in_degree - delta_x_msg.shape[1]
+
+        # (n_nodes, hidden_dimension, max_in_degree, max_in_degree)
+        h_delta_x = torch.nn.ConstantPad2d((0, pad_value, 0, pad_value), 0.0)(
+            h_delta_x,
+        )
+
+        # (n_nodes, max_in_degree, max_in_degree, hidden_dimension)
+        h_delta_x = h_delta_x.permute(0, 2, 3, 1)
+
+        # query id
+        id_msg = nodes.mailbox['id_msg']
+
+        # pad id
+        id_msg = torch.cat([id_msg, -1*torch.ones(x_msg.shape[0], pad_value, dtype=id_msg.dtype)], dim=-1)
+
+        assert id_msg.shape[0] == h_delta_x.shape[0]
+
+        return {'h_delta_x': h_delta_x, 'edge_id': id_msg}
+
+    def _rearrange_coordinate_attention(self, graph):
+        edge_id = graph.ndata['edge_id'].flatten()
+
+        # (n_nodes * max_in_degree, hidden_dimension)
+        h_delta_x_edge_sum = graph.ndata['h_delta_x'].sum(dim=1).flatten(
+            start_dim=0, end_dim=1
+        )
+
+        h_delta_x_edge_sum = h_delta_x_edge_sum[edge_id != -1]
+        edge_id = edge_id[edge_id != -1]
+
+        assert edge_id.shape[0] == h_delta_x_edge_sum.shape[0]
+
+        h_delta_x_edge_sum_ = torch.empty(
+            graph.number_of_edges(),
+            self.hidden_features,
+        )
+
+        h_delta_x_edge_sum_[edge_id, :] = h_delta_x_edge_sum
+        graph.edata['h_delta_edge_sum'] = h_delta_x_edge_sum_
+
+        graph.ndata['h_delta_x_all_sum'] = graph.ndata['h_delta_x'].sum(dim=(1, 2))
+        graph.ndata.pop('h_delta_x')
+        return graph
 
     def _node_model(self, node):
         return {"h_v":
@@ -250,9 +310,28 @@ class SAKELayer(EGNNLayer):
                     [
                         node.data["h_v"],
                         node.data["h_agg"],
-                        node.data['h_delta_x'],
+                        node.data['h_delta_x_all_sum'],
                     ],
                     dim=-1,
+                )
+            )
+        }
+
+    def _edge_model(self, edge):
+
+        return {"h_e":
+            self.edge_mlp(
+                torch.cat(
+                    [edge.data["h_e_0"] for _ in range(int(self.edge_features>0))]
+                    + [
+                        edge.data["h_delta_edge_sum"],
+                        edge.src["h_v"],
+                        edge.dst["h_v"],
+                        (edge.src["x"] - edge.dst["x"]).pow(2).sum(
+                            dim=-1, keepdims=True
+                        ),
+                    ],
+                    dim=-1
                 )
             )
         }
@@ -294,9 +373,12 @@ class SAKELayer(EGNNLayer):
 
         # conduct spatial attention
         graph.update_all(
-            message_func=dgl.function.copy_src("x", "x_msg"),
+            message_func=self._copy_x_and_id,
             reduce_func=self._coordinate_attention,
         )
+
+        # rearrange
+        graph = self._rearrange_coordinate_attention(graph)
 
         # apply representation update on edge
         # Eq. 3 in "E(n) Equivariant Graph Neural Networks"
