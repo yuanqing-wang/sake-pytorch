@@ -24,6 +24,7 @@ class EGNN(torch.nn.Module):
         edge_features=0,
         activation=torch.nn.SiLU(),
         layer=EGNNLayer,
+        max_in_degree=10,
     ):
         super(EGNN, self).__init__()
         self.in_features = in_features
@@ -33,6 +34,7 @@ class EGNN(torch.nn.Module):
         self.embedding_out = torch.nn.Linear(hidden_features, out_features)
         self.activation = activation
         self.depth = depth
+        self.max_in_degree = max_in_degree
 
         for idx in range(0, depth):
             self.add_module(
@@ -42,6 +44,7 @@ class EGNN(torch.nn.Module):
                     out_features=hidden_features,
                     activation=activation,
                     edge_features=edge_features,
+                    max_in_degree=max_in_degree,
                 )
             )
 

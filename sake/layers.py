@@ -32,6 +32,7 @@ class EGNNLayer(torch.nn.Module):
         edge_features: int=0,
         activation : Callable=torch.nn.SiLU(),
         space_dimension : int=3,
+        max_in_degree: int=10,
     ):
         super(EGNNLayer, self).__init__()
 
