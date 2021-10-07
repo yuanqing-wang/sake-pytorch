@@ -236,7 +236,7 @@ class SAKELayer(EGNNLayer):
         # (n_nodes, n_in, n_in, hidden_dimension)
         delta_x_msg = self.delta_coordinate_model(
             delta_x_msg[:, :, :, None]
-        )
+        ).tanh()
 
         # (n_nodes, hidden_dimension)
         h_delta_x = torch.sum(delta_x_msg, (1, 2))
