@@ -295,6 +295,8 @@ class SAKELayer(EGNNLayer):
         h_delta_x_edge_sum_ = torch.empty(
             graph.number_of_edges(),
             self.hidden_features,
+            dtype=h_delta_x_edge_sum.dtype,
+            device=h_delta_x_edge_sum.device,
         )
 
         h_delta_x_edge_sum_[edge_id, :] = h_delta_x_edge_sum
