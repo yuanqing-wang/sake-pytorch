@@ -32,7 +32,7 @@ class EGNNLayer(torch.nn.Module):
         edge_features: int=0,
         activation : Callable=torch.nn.SiLU(),
         space_dimension : int=3,
-        max_in_degree: int=10,
+        *args, **kwargs,
     ):
         super(EGNNLayer, self).__init__()
 
@@ -204,6 +204,7 @@ class SAKELayer(EGNNLayer):
         activation : Callable=torch.nn.SiLU(),
         space_dimension : int=3,
         max_in_degree: int=10,
+        space_hidden_dimension: int=8,
     ):
         super(SAKELayer, self).__init__(
             in_features=in_features,
@@ -215,22 +216,22 @@ class SAKELayer(EGNNLayer):
         )
 
         self.delta_coordinate_model = torch.nn.Sequential(
-            torch.nn.Linear(1, hidden_features),
+            torch.nn.Linear(1, space_hidden_dimension),
             activation,
-            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.Linear(space_hidden_dimension, space_hidden_dimension),
             activation,
-            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.Linear(space_hidden_dimension, space_hidden_dimension),
         )
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2*hidden_features + in_features, hidden_features),
+            torch.nn.Linear(space_hidden_dimension + hidden_features + in_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, out_features)
         )
 
         self.edge_mlp = torch.nn.Sequential(
             torch.nn.Linear(
-                hidden_features + edge_features + in_features * 2 + 1,
+                space_hidden_dimension + edge_features + in_features * 2 + 1,
                 hidden_features
             ),
             activation,
@@ -239,6 +240,7 @@ class SAKELayer(EGNNLayer):
         )
 
         self.max_in_degree = max_in_degree
+        self.space_hidden_dimension = space_hidden_dimension
 
     def _copy_x_and_id(self, edges):
         return {'x_msg': edges.src['x'], 'id_msg': edges.edges()[2]}
