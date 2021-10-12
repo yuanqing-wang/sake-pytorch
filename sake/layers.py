@@ -217,10 +217,9 @@ class SAKELayer(EGNNLayer):
 
         self.delta_coordinate_model = torch.nn.Sequential(
             torch.nn.Linear(1, space_hidden_dimension),
-            activation,
+            torch.nn.Sigmoid(),
             torch.nn.Linear(space_hidden_dimension, space_hidden_dimension),
-            activation,
-            torch.nn.Linear(space_hidden_dimension, space_hidden_dimension),
+            torch.nn.Sigmoid(),
         )
 
         self.node_mlp = torch.nn.Sequential(
@@ -296,7 +295,7 @@ class SAKELayer(EGNNLayer):
 
         h_delta_x_edge_sum_ = torch.empty(
             graph.number_of_edges(),
-            self.hidden_features,
+            self.space_hidden_dimension,
             dtype=h_delta_x_edge_sum.dtype,
             device=h_delta_x_edge_sum.device,
         )
@@ -304,7 +303,7 @@ class SAKELayer(EGNNLayer):
         h_delta_x_edge_sum_[edge_id, :] = h_delta_x_edge_sum
         graph.edata['h_delta_edge_sum'] = h_delta_x_edge_sum_
 
-        graph.ndata['h_delta_x_all_sum'] = graph.ndata['h_delta_x'].sum(dim=(1, 2))
+        graph.ndata['h_delta_x_all_sum'] = graph.ndata['h_delta_x'].sum(dim=2).max(dim=1)[0]
         graph.ndata.pop('h_delta_x')
         return graph
 
