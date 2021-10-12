@@ -25,6 +25,7 @@ class EGNN(torch.nn.Module):
         activation=torch.nn.SiLU(),
         layer=EGNNLayer,
         max_in_degree=10,
+        sum_readout=None,
     ):
         super(EGNN, self).__init__()
         self.in_features = in_features
@@ -35,6 +36,7 @@ class EGNN(torch.nn.Module):
         self.activation = activation
         self.depth = depth
         self.max_in_degree = max_in_degree
+        self.sum_readout = sum_readout
 
         for idx in range(0, depth):
             self.add_module(
@@ -76,4 +78,9 @@ class EGNN(torch.nn.Module):
                 graph, feat, coordinate, velocity, edge_feat,
             )
         feat = self.embedding_out(feat)
+
+        if self.sum_readout is not None:
+            graph.ndata['h'] = feat
+            feat = dgl.sum_nodes(graph, 'h')
+            feat = self.sum_readout(feat)
         return feat, coordinate
