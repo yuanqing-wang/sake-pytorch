@@ -32,6 +32,7 @@ class EGNNLayer(torch.nn.Module):
         edge_features: int=0,
         activation : Callable=torch.nn.SiLU(),
         space_dimension : int=3,
+        update_coordinate: bool=True,
         *args, **kwargs,
     ):
         super(EGNNLayer, self).__init__()
@@ -42,6 +43,7 @@ class EGNNLayer(torch.nn.Module):
         self.edge_features = edge_features
         self.activation = activation
         self.space_dimension = space_dimension
+        self.update_coordinate = update_coordinate
 
         self.coordinate_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
@@ -171,11 +173,12 @@ class EGNNLayer(torch.nn.Module):
         )
 
         # apply coordinate update on nodes
-        if velocity is not None:
-            graph.ndata["v"] = velocity
-            graph.apply_nodes(func=self._velocity_and_coordinate_node_model)
-        else:
-            graph.apply_nodes(func=self._coordinate_node_model)
+        if self.update_coordinate is True:
+            if velocity is not None:
+                graph.ndata["v"] = velocity
+                graph.apply_nodes(func=self._velocity_and_coordinate_node_model)
+            else:
+                graph.apply_nodes(func=self._coordinate_node_model)
 
         ## aggregate representation update
         graph.update_all(
@@ -203,6 +206,7 @@ class SAKELayer(EGNNLayer):
         edge_features: int=0,
         activation : Callable=torch.nn.SiLU(),
         space_dimension : int=3,
+        update_coordinate: bool=True,
         max_in_degree: int=10,
         space_hidden_dimension: int=8,
     ):
@@ -213,6 +217,7 @@ class SAKELayer(EGNNLayer):
             activation=activation,
             space_dimension=space_dimension,
             edge_features=edge_features,
+            update_coordinate=update_coordinate,
         )
 
         self.delta_coordinate_model = torch.nn.Sequential(
@@ -398,11 +403,12 @@ class SAKELayer(EGNNLayer):
         )
 
         # apply coordinate update on nodes
-        if velocity is not None:
-            graph.ndata["v"] = velocity
-            graph.apply_nodes(func=self._velocity_and_coordinate_node_model)
-        else:
-            graph.apply_nodes(func=self._coordinate_node_model)
+        if self.update_coordinate is True:
+            if velocity is not None:
+                graph.ndata["v"] = velocity
+                graph.apply_nodes(func=self._velocity_and_coordinate_node_model)
+            else:
+                graph.apply_nodes(func=self._coordinate_node_model)
 
         ## aggregate representation update
         graph.update_all(
