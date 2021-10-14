@@ -222,13 +222,13 @@ class SAKELayer(EGNNLayer):
 
         self.delta_coordinate_model = torch.nn.Sequential(
             torch.nn.Linear(1, space_hidden_dimension),
-            torch.nn.Sigmoid(),
+            activation,
             torch.nn.Linear(space_hidden_dimension, space_hidden_dimension),
-            torch.nn.Sigmoid(),
+            activation,
         )
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(hidden_features + in_features, hidden_features),
+            torch.nn.Linear(space_hidden_dimension + hidden_features + in_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, out_features)
         )
@@ -253,8 +253,11 @@ class SAKELayer(EGNNLayer):
         # (n_nodes, n_in, space_dimension)
         x_msg = nodes.mailbox['x_msg']
 
+        n_in = x_msg.shape[1]
+
         # (n_nodes, n_in, n_in)
         delta_x_msg = (x_msg[:, None, :, :] - x_msg[:, :, None, :]).pow(2).sum(dim=-1)
+        delta_x_msg = delta_x_msg.softmax(dim=-1) * (delta_x_msg.sign().abs())
 
         # (n_nodes, n_in, n_in, hidden_dimension)
         h_delta_x = self.delta_coordinate_model(
@@ -298,7 +301,7 @@ class SAKELayer(EGNNLayer):
 
         assert edge_id.shape[0] == h_delta_x_edge_sum.shape[0]
 
-        h_delta_x_edge_sum_ = torch.empty(
+        h_delta_x_edge_sum_ = torch.zeros(
             graph.number_of_edges(),
             self.space_hidden_dimension,
             dtype=h_delta_x_edge_sum.dtype,
@@ -319,7 +322,7 @@ class SAKELayer(EGNNLayer):
                     [
                         node.data["h_v"],
                         node.data["h_agg"],
-                        # node.data['h_delta_x_all_sum'],
+                        node.data['h_delta_x_all_sum'],
                     ],
                     dim=-1,
                 )
