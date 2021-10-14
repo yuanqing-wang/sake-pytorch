@@ -228,7 +228,7 @@ class SAKELayer(EGNNLayer):
         )
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(space_hidden_dimension + hidden_features + in_features, hidden_features),
+            torch.nn.Linear(hidden_features + in_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, out_features)
         )
@@ -319,7 +319,7 @@ class SAKELayer(EGNNLayer):
                     [
                         node.data["h_v"],
                         node.data["h_agg"],
-                        node.data['h_delta_x_all_sum'],
+                        # node.data['h_delta_x_all_sum'],
                     ],
                     dim=-1,
                 )
