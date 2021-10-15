@@ -287,12 +287,10 @@ class SAKELayer(EGNNLayer):
         # (n_nodes, n_in, space_dimension)
         x_msg = nodes.mailbox['x_msg']
 
-        n_in = x_msg.shape[1]
-
         # (n_nodes, n_in, n_in)
         delta_x_msg = (x_msg[:, None, :, :] - x_msg[:, :, None, :]).pow(2).sum(dim=-1)
         # delta_x_msg = delta_x_msg.softmax(dim=-1) * (delta_x_msg.sign().abs())
-        delta_x_msg = delta_x_msg / delta_x_msg.sum()
+        delta_x_msg = delta_x_msg / (delta_x_msg.sum() + 1.0) # stablize
 
         # (n_nodes, n_in, n_in, hidden_dimension)
         h_delta_x = self.delta_coordinate_model(
