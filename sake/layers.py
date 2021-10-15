@@ -2,6 +2,22 @@ import torch
 import dgl
 from typing import Callable
 
+class PNA(torch.nn.Module):
+    def __init__(self, aggregators=['sum', 'mean', 'max', 'min', 'std']):
+        super(PNA, self).__init__()
+        self.aggregators = aggregators
+
+    def forward(self, x, dim=1):
+        x = torch.cat(
+            [
+                getattr(torch, aggregator)(x, dim=dim)
+                for aggregator in self.aggregators
+            ],
+            dim=-1
+        )
+
+        return x
+
 class EGNNLayer(torch.nn.Module):
     """ Layer of E(n) Equivariant Graph Neural Networks.
 
@@ -228,7 +244,7 @@ class SAKELayer(EGNNLayer):
         )
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(space_hidden_dimension + hidden_features + in_features, hidden_features),
+            torch.nn.Linear(hidden_features + in_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, out_features)
         )
@@ -240,6 +256,16 @@ class SAKELayer(EGNNLayer):
             ),
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+        )
+
+        self.node_summary_model = torch.nn.Sequential(
+            torch.nn.Linear(5 * space_hidden_dimension, space_hidden_dimension),
+            activation,
+        )
+
+        self.edge_summary_model = torch.nn.Sequential(
+            torch.nn.Linear(5 * space_hidden_dimension, space_hidden_dimension),
             activation,
         )
 
@@ -257,26 +283,27 @@ class SAKELayer(EGNNLayer):
 
         # (n_nodes, n_in, n_in)
         delta_x_msg = (x_msg[:, None, :, :] - x_msg[:, :, None, :]).pow(2).sum(dim=-1)
-        delta_x_msg = delta_x_msg.softmax(dim=-1) * (delta_x_msg.sign().abs())
+        # delta_x_msg = delta_x_msg.softmax(dim=-1) * (delta_x_msg.sign().abs())
+        delta_x_msg = delta_x_msg / delta_x_msg.sum()
 
         # (n_nodes, n_in, n_in, hidden_dimension)
         h_delta_x = self.delta_coordinate_model(
             delta_x_msg[:, :, :, None]
         )
 
-        # transposte so that channel is 1 dim
-        h_delta_x = h_delta_x.permute(0, 3, 1, 2)
+        # (n_nodes, n_in, hidden_dimension) 
+        h_e_delta_x = self.edge_summary_model(PCA()(h_delta_x))
+
+        # (n_nodes, hidden_dimension)
+        h_v_delta_x = self.node_summary_model(PCA()(h_e_delta_x))
 
         # padding
-        pad_value = self.max_in_degree - delta_x_msg.shape[1]
+        padding = self.max_in_degree - delta_x_msg.shape[1]
 
-        # (n_nodes, hidden_dimension, max_in_degree, max_in_degree)
-        h_delta_x = torch.nn.ConstantPad2d((0, pad_value, 0, pad_value), 0.0)(
-            h_delta_x,
-        )
-
-        # (n_nodes, max_in_degree, max_in_degree, hidden_dimension)
-        h_delta_x = h_delta_x.permute(0, 2, 3, 1)
+        h_e_delta_x = torch.nn.ConstantPad1d(
+           padding,
+            0.0,
+        )(h_e_delta_x).permute(0, 2, 1)
 
         # query id
         id_msg = nodes.mailbox['id_msg']
@@ -284,35 +311,28 @@ class SAKELayer(EGNNLayer):
         # pad id
         id_msg = torch.cat([id_msg, -1*torch.ones(x_msg.shape[0], pad_value, dtype=id_msg.dtype, device=id_msg.device)], dim=-1)
 
-        assert id_msg.shape[0] == h_delta_x.shape[0]
-
-        return {'h_delta_x': h_delta_x, 'edge_id': id_msg}
+        return {'h_v_delta_x': h_v_delta_x, 'h_e_delta_x': h_e_delta_x, 'edge_id': id_msg}
 
     def _rearrange_coordinate_attention(self, graph):
         edge_id = graph.ndata['edge_id'].flatten()
 
         # (n_nodes * max_in_degree, hidden_dimension)
-        h_delta_x_edge_sum = graph.ndata['h_delta_x'].sum(dim=1).flatten(
+        h_e_delta_x = graph.ndata['h_e_delta_x'].flatten(
             start_dim=0, end_dim=1
         )
 
-        h_delta_x_edge_sum = h_delta_x_edge_sum[edge_id != -1]
+        h_e_delta_x = h_e_delta_x[edge_id != -1]
         edge_id = edge_id[edge_id != -1]
 
-        assert edge_id.shape[0] == h_delta_x_edge_sum.shape[0]
-
-        h_delta_x_edge_sum_ = torch.zeros(
+        h_e_delta_x_ = torch.empty(
             graph.number_of_edges(),
             self.space_hidden_dimension,
             dtype=h_delta_x_edge_sum.dtype,
             device=h_delta_x_edge_sum.device,
         )
 
-        h_delta_x_edge_sum_[edge_id, :] = h_delta_x_edge_sum
-        graph.edata['h_delta_edge_sum'] = h_delta_x_edge_sum_
-
-        graph.ndata['h_delta_x_all_sum'] = graph.ndata['h_delta_x'].sum(dim=2).max(dim=1)[0]
-        graph.ndata.pop('h_delta_x')
+        h_e_delta_x_[edge_id, :] = h_e_delta_x
+        graph.edata['h_e_delta_x'] = h_e_delta_x_
         return graph
 
     def _node_model(self, node):
@@ -322,7 +342,7 @@ class SAKELayer(EGNNLayer):
                     [
                         node.data["h_v"],
                         node.data["h_agg"],
-                        node.data['h_delta_x_all_sum'],
+                        node.data["h_v_delta_x"],
                     ],
                     dim=-1,
                 )
@@ -336,7 +356,7 @@ class SAKELayer(EGNNLayer):
                 torch.cat(
                     [edge.data["h_e_0"] for _ in range(int(self.edge_features>0))]
                     + [
-                        edge.data["h_delta_edge_sum"],
+                        edge.data["h_e_delta_x"],
                         edge.src["h_v"],
                         edge.dst["h_v"],
                         (edge.src["x"] - edge.dst["x"]).pow(2).sum(
