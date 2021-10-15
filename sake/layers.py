@@ -1,6 +1,7 @@
 import torch
 import dgl
 from typing import Callable
+import itertools
 
 AGGREGATORS = {
     'sum': torch.sum,
@@ -25,6 +26,98 @@ class PNA(torch.nn.Module):
         )
 
         return x
+
+class GlobalSumSAKELayer(torch.nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features: int,
+        out_features: int,
+        space_dimension: int=3,
+        activation: Callable=torch.nn.SiLU(),
+    ):
+        super(GlobalSumSAKELayer, self).__init__()
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(1 + 2 * in_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, out_features),
+        )
+
+    def _all_attention_reduce_func(self, node):
+        # (n_graph, n_node, 3)
+        coordinate = node.mailbox['x']
+
+        # (n_graph, n_node, hidden_dimension)
+        feat = node.mailbox['h']
+
+        # (n_graph, n_node, n_node, 1)
+        coordinate_attention = (
+            coordinate[:, None, :, :] - coordinate[:, :, None, :]
+        ).pow(2).sum(dim=-1, keepdims=True)
+
+        # (n_graph, n_node, n_node, hidden_features)
+        feat_attention = torch.cat(
+            [
+                feat[:, None, :, :].expand(-1, coordinate.shape[1], -1, -1),
+                feat[:, :, None, :].expand(-1, -1, coordinate.shape[1], -1)
+            ],
+            dim=-1
+        )
+
+        # (n_graph, n_node, n_node, hidden_features)
+        all_attention = self.mlp(
+            torch.cat(
+                [
+                    coordinate_attention,
+                    feat_attention,
+                ],
+                dim=-1
+            ),
+        )
+
+        # (n_graph, hidden_features)
+        sum_all_attention = torch.sum(
+            all_attention,
+            dim=(1, 2)
+        )
+
+        return {'sum_all_attention': sum_all_attention}
+
+    def forward(self, graph, feat, coordinate):
+        # (n_graph, )
+        batch_num_nodes = graph.batch_num_nodes()
+
+        # (n_nodes, )
+        graph_idxs = torch.tensor(
+            list(itertools.chain(*[[graph_idx for _ in range(num_nodes)] for graph_idx, num_nodes in enumerate(batch_num_nodes)]))
+        )
+
+        # constrcut heterograph
+        heterograph = dgl.heterograph(
+            {
+                ('node', 'in', 'graph'): (
+                    torch.arange(feat.shape[0]),
+                    graph_idxs,
+                )
+            },
+            device=graph.device,
+        )
+
+        heterograph.nodes['node'].data['x'] = coordinate
+        heterograph.nodes['node'].data['h'] = feat
+
+        heterograph.update_all(
+            message_func = lambda edges: {
+                'x': edges.src['x'],
+                'h': edges.src['h']
+            },
+            reduce_func = self._all_attention_reduce_func,
+        )
+
+        sum_all_attention = heterograph.nodes['graph'].data['sum_all_attention']
+        return sum_all_attention
 
 class EGNNLayer(torch.nn.Module):
     """ Layer of E(n) Equivariant Graph Neural Networks.
