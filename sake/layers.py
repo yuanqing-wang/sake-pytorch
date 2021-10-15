@@ -7,11 +7,11 @@ AGGREGATORS = {
     'mean': torch.mean,
     'max': lambda *args, **kwargs: torch.max(*args, **kwargs)[0],
     'min': lambda *args, **kwargs: torch.min(*args, **kwargs)[0],
-    'std': torch.std,
+    'var': torch.var,
 }
 
 class PNA(torch.nn.Module):
-    def __init__(self, aggregators=['sum', 'mean', 'max', 'min', 'std']):
+    def __init__(self, aggregators=['sum', 'mean', 'max', 'min', 'var']):
         super(PNA, self).__init__()
         self.aggregators = aggregators
 
