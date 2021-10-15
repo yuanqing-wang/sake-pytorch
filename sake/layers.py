@@ -2,6 +2,14 @@ import torch
 import dgl
 from typing import Callable
 
+AGGREGATORS = {
+    'sum': torch.sum,
+    'mean': torch.mean,
+    'max': lambda *args, **kwargs: torch.max(*args, **kwargs)[0],
+    'min': lambda *args, **kwargs: torch.min(*args, **kwargs)[0],
+    'std': torch.std,
+}
+
 class PNA(torch.nn.Module):
     def __init__(self, aggregators=['sum', 'mean', 'max', 'min', 'std']):
         super(PNA, self).__init__()
@@ -10,7 +18,7 @@ class PNA(torch.nn.Module):
     def forward(self, x, dim=1):
         x = torch.cat(
             [
-                getattr(torch, aggregator)(x, dim=dim)
+                AGGREGATORS[aggregator](x, dim=dim)
                 for aggregator in self.aggregators
             ],
             dim=-1
@@ -244,7 +252,7 @@ class SAKELayer(EGNNLayer):
         )
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(hidden_features + in_features, hidden_features),
+            torch.nn.Linear(space_hidden_dimension + hidden_features + in_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, out_features)
         )
@@ -291,25 +299,25 @@ class SAKELayer(EGNNLayer):
             delta_x_msg[:, :, :, None]
         )
 
-        # (n_nodes, n_in, hidden_dimension) 
-        h_e_delta_x = self.edge_summary_model(PCA()(h_delta_x))
+        # (n_nodes, n_in, hidden_dimension)
+        h_e_delta_x = self.edge_summary_model(PNA()(h_delta_x))
 
         # (n_nodes, hidden_dimension)
-        h_v_delta_x = self.node_summary_model(PCA()(h_e_delta_x))
+        h_v_delta_x = self.node_summary_model(PNA()(h_e_delta_x))
 
         # padding
         padding = self.max_in_degree - delta_x_msg.shape[1]
 
         h_e_delta_x = torch.nn.ConstantPad1d(
-           padding,
+           (0, padding),
             0.0,
-        )(h_e_delta_x).permute(0, 2, 1)
+        )(h_e_delta_x.permute(0, 2, 1)).permute(0, 2, 1)
 
         # query id
         id_msg = nodes.mailbox['id_msg']
 
         # pad id
-        id_msg = torch.cat([id_msg, -1*torch.ones(x_msg.shape[0], pad_value, dtype=id_msg.dtype, device=id_msg.device)], dim=-1)
+        id_msg = torch.cat([id_msg, -1*torch.ones(x_msg.shape[0], padding, dtype=id_msg.dtype, device=id_msg.device)], dim=-1)
 
         return {'h_v_delta_x': h_v_delta_x, 'h_e_delta_x': h_e_delta_x, 'edge_id': id_msg}
 
@@ -327,8 +335,8 @@ class SAKELayer(EGNNLayer):
         h_e_delta_x_ = torch.empty(
             graph.number_of_edges(),
             self.space_hidden_dimension,
-            dtype=h_delta_x_edge_sum.dtype,
-            device=h_delta_x_edge_sum.device,
+            dtype=h_e_delta_x.dtype,
+            device=h_e_delta_x.device,
         )
 
         h_e_delta_x_[edge_id, :] = h_e_delta_x
