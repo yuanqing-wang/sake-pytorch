@@ -474,35 +474,58 @@ class SAKELayer(EGNNLayer):
         # (n_nodes, n_in, space_dimension)
         x_msg = nodes.mailbox['x_msg']
 
-        # (n_nodes, n_in, n_in)
-        delta_x_msg = (x_msg[:, None, :, :] - x_msg[:, :, None, :]).pow(2).sum(dim=-1)
-        # delta_x_msg = delta_x_msg.softmax(dim=-1) * (delta_x_msg.sign().abs())
-        delta_x_msg = delta_x_msg / (delta_x_msg.sum() + 1.0) # stablize
+        if x_msg.shape[1] > 1:
 
-        # (n_nodes, n_in, n_in, hidden_dimension)
-        h_delta_x = self.delta_coordinate_model(
-            delta_x_msg[:, :, :, None]
-        )
+            # (n_nodes, n_in, n_in)
+            delta_x_msg = (x_msg[:, None, :, :] - x_msg[:, :, None, :]).pow(2).sum(dim=-1)
+            # delta_x_msg = delta_x_msg.softmax(dim=-1) * (delta_x_msg.sign().abs())
+            #
+            delta_x_msg = delta_x_msg / (delta_x_msg.sum() + 1.0) # stablize
 
-        # (n_nodes, n_in, hidden_dimension)
-        h_e_delta_x = self.edge_summary_model(PNA()(h_delta_x))
+            # (n_nodes, n_in, n_in, hidden_dimension)
+            h_delta_x = self.delta_coordinate_model(
+                delta_x_msg[:, :, :, None]
+            )
 
-        # (n_nodes, hidden_dimension)
-        h_v_delta_x = self.node_summary_model(PNA()(h_e_delta_x))
+            # (n_nodes, n_in, hidden_dimension)
+            h_e_delta_x = self.edge_summary_model(PNA()(h_delta_x))
 
-        # padding
-        padding = self.max_in_degree - delta_x_msg.shape[1]
+            # (n_nodes, hidden_dimension)
+            h_v_delta_x = self.node_summary_model(PNA()(h_e_delta_x))
 
-        h_e_delta_x = torch.nn.ConstantPad1d(
-           (0, padding),
-            0.0,
-        )(h_e_delta_x.permute(0, 2, 1)).permute(0, 2, 1)
+            # padding
+            padding = self.max_in_degree - delta_x_msg.shape[1]
+
+            h_e_delta_x = torch.nn.ConstantPad1d(
+               (0, padding),
+                0.0,
+            )(h_e_delta_x.permute(0, 2, 1)).permute(0, 2, 1)
+
+        else:
+            # padding
+            padding = self.max_in_degree - x_msg.shape[1]
+
+            h_v_delta_x = torch.zeros(
+                x_msg.shape[0],
+                self.space_hidden_dimension,
+                dtype=x_msg.dtype,
+                device=x_msg.device,
+            )
+
+            h_e_delta_x = torch.zeros(
+                x_msg.shape[0],
+                self.max_in_degree,
+                self.space_hidden_dimension,
+                dtype=x_msg.dtype,
+                device=x_msg.device,
+            )
 
         # query id
         id_msg = nodes.mailbox['id_msg']
 
         # pad id
         id_msg = torch.cat([id_msg, -1*torch.ones(x_msg.shape[0], padding, dtype=id_msg.dtype, device=id_msg.device)], dim=-1)
+
 
         return {'h_v_delta_x': h_v_delta_x, 'h_e_delta_x': h_e_delta_x, 'edge_id': id_msg}
 
