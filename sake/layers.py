@@ -15,6 +15,7 @@ class PNA(torch.nn.Module):
     def __init__(self, aggregators=['sum', 'mean', 'max', 'min', 'var']):
         super(PNA, self).__init__()
         self.aggregators = aggregators
+        self.n_aggregators = len(self.aggregators)
 
     def forward(self, x, dim=1):
         x = torch.cat(
@@ -26,6 +27,99 @@ class PNA(torch.nn.Module):
         )
 
         return x
+
+class DenseSAKELayer(torch.nn.Module):
+    def __init__(
+            self,
+            in_features: int,
+            hidden_features: int,
+            out_features: int,
+            activation: Callable=torch.nn.SiLU(),
+        ):
+        super(DenseSAKELayer, self).__init__()
+        self.edge_weight_mlp = torch.nn.Sequential(
+            torch.nn.Linear(2 * in_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+
+        self.edge_summary_mlp = torch.nn.Sequential(
+            torch.nn.Linear(2*in_features+hidden_features+1, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+
+        self.node_mlp = torch.nn.Sequential(
+            torch.nn.Linear(in_features + hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+
+        self.coordinate_mlp = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, 1)
+        )
+
+    def forward(self, h, x):
+        # x.shape = (n, 3)
+        # h.shape = (n, d)
+
+        # (n, n, 3)
+        x_minus_xt = x.unsqueeze(-3) - x.unsqueeze(-2)
+        x_minus_xt_norm = x_minus_xt.pow(2).sum(dim=-1, keepdims=True)
+
+        # (n, n, d)
+        h_cat_ht = torch.cat(
+            [
+                h.unsqueeze(-3).expand(*[-1 for _ in range(h.dim()-2)], h.shape[-2], -1, -1),
+                h.unsqueeze(-2).expand(*[-1 for _ in range(h.dim()-2)], -1, h.shape[-2], -1)
+            ],
+            dim=-1
+        )
+
+        # (n, n, d)
+        x_minus_xt_weight = self.edge_weight_mlp(
+            h_cat_ht,
+        ).softmax(dim=-2)
+
+        # (n, n, d, 3)
+        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * x_minus_xt.unsqueeze(-2)
+
+        # (n, n, d)
+        x_minus_xt_att_sum = x_minus_xt_att.pow(2).sum(dim=-1)
+
+        # (n, n, d)
+        h_e = self.edge_summary_mlp(
+            torch.cat(
+                [
+                    x_minus_xt_norm,
+                    x_minus_xt_att_sum,
+                    h_cat_ht
+                ],
+                dim=-1
+            ),
+        )
+
+        # (n, 3)
+        _x = (x_minus_xt * self.coordinate_mlp(h_e)).sum(dim=-2) + x
+
+        # (n, d)
+        h_e_agg = h_e.sum(dim=-2)
+
+        # (n, d)
+        _h = self.node_mlp(
+            torch.cat(
+                [
+                    h,
+                    h_e_agg,
+                ],
+                dim=-1
+            )
+        )
+
+        return _h, _x
+
 
 class GlobalSumSAKELayer(torch.nn.Module):
     def __init__(

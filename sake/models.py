@@ -1,7 +1,47 @@
 import torch
 import dgl
-from typing import Callable
-from .layers import EGNNLayer, SAKELayer
+from typing import Union, Callable
+from .layers import EGNNLayer, SAKELayer, DenseSAKELayer
+
+
+class DenseSAKEModel(torch.nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features: int,
+        out_features: int,
+        depth: int=4,
+        activation: Callable=torch.nn.SiLU(),
+        sum_readout: Union[None, Callable]=None,
+    ):
+        super(DenseSAKEModel, self).__init__()
+        self.in_features = in_features
+        self.hidden_features = hidden_features
+        self.out_features = out_features
+        self.embedding_in = torch.nn.Linear(in_features, hidden_features)
+        self.embedding_out = torch.nn.Linear(hidden_features, out_features)
+        self.activation = activation
+        self.depth = depth
+        self.sum_readout = sum_readout
+
+        for idx in range(0, depth):
+            self.add_module(
+                "EqLayer_%s" % idx, DenseSAKELayer(
+                    in_features=hidden_features,
+                    hidden_features=hidden_features,
+                    out_features=hidden_features,
+                    activation=activation,
+                )
+            )
+
+    def forward(self, h, x):
+        for idx in range(self.depth):
+            h, x = self._modules["EqLayer_%s" % idx](h, x)
+        if self.sum_readout is not None:
+            h = h.sum(dim=-2)
+            h = self.sum_readout(h)
+
+        return h, x
 
 class EGNN(torch.nn.Module):
     """ E(n) Equivariant Graph Neural Networks.
