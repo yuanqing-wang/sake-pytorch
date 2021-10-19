@@ -1,6 +1,6 @@
 import torch
 import dgl
-from typing import Callable
+from typing import Callable, Union
 import itertools
 
 AGGREGATORS = {
@@ -28,6 +28,24 @@ class PNA(torch.nn.Module):
 
         return x
 
+class ContinuousFilterConvolution(torch.nn.Module):
+    def __init__(
+            self,
+            gamma=10.0,
+            mu=torch.arange(0, 30, 0.1),
+            ):
+        super(ContinuousFilterConvolution, self).__init__()
+        self.gamma = gamma
+        self.mu = mu
+        self.out_features = len(mu)
+
+    def forward(self, x):
+        return torch.exp(
+            -(x-self.mu.view(*[1 for _ in range(x.dim()-1)], -1)).pow(2) * self.gamma
+        ) * (
+            x.sign()
+        )
+
 class DenseSAKELayer(torch.nn.Module):
     def __init__(
             self,
@@ -36,6 +54,7 @@ class DenseSAKELayer(torch.nn.Module):
             out_features: int,
             activation: Callable=torch.nn.SiLU(),
             update_coordinate: bool=True,
+            distance_filter: Union[Callable, None]=None
         ):
         super(DenseSAKELayer, self).__init__()
         self.edge_weight_mlp = torch.nn.Sequential(
@@ -44,8 +63,15 @@ class DenseSAKELayer(torch.nn.Module):
             torch.nn.Linear(hidden_features, hidden_features),
         )
 
+        self.distance_filter = distance_filter
+
+        if self.distance_filter is not None:
+            distance_encoding_dimension = self.distance_filter.out_features
+        else:
+            distance_encoding_dimension = 1
+
         self.edge_summary_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2*in_features+1, hidden_features),
+            torch.nn.Linear(2*in_features+distance_encoding_dimension, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
         )
@@ -64,6 +90,7 @@ class DenseSAKELayer(torch.nn.Module):
 
         self.update_coordinate = update_coordinate
 
+
     def forward(self, h, x):
         # x.shape = (n, 3)
         # h.shape = (n, d)
@@ -73,6 +100,9 @@ class DenseSAKELayer(torch.nn.Module):
 
         # (n, n, 1)
         x_minus_xt_norm = x_minus_xt.pow(2).sum(dim=-1, keepdims=True)
+
+        if self.distance_filter is not None:
+            x_minus_xt_norm = self.distance_filter(x_minus_xt_norm)
 
         # (n, n, 2*d)
         h_cat_ht = torch.cat(
