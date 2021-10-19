@@ -45,13 +45,13 @@ class DenseSAKELayer(torch.nn.Module):
         )
 
         self.edge_summary_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2*in_features+hidden_features+1, hidden_features),
+            torch.nn.Linear(2*in_features+1, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(in_features + hidden_features, hidden_features),
+            torch.nn.Linear(in_features + 2*hidden_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
         )
@@ -89,17 +89,19 @@ class DenseSAKELayer(torch.nn.Module):
         )
 
         # (n, n, d, 3)
-        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * x_minus_xt.unsqueeze(-2)
+        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * x_minus_xt.unsqueeze(-2).softmax(dim=-3)
 
-        # (n, n, d)
-        x_minus_xt_att_sum = x_minus_xt_att.pow(2).sum(dim=-1)
+        # (n, d, 3)
+        x_minus_xt_att_sum = x_minus_xt_att.sum(dim=-3)
+
+        # (n, d)
+        x_minus_xt_att_norm = x_minus_xt_att_sum.pow(2).sum(-1)
 
         # (n, n, d)
         h_e = self.edge_summary_mlp(
             torch.cat(
                 [
                     x_minus_xt_norm,
-                    x_minus_xt_att_sum,
                     h_cat_ht
                 ],
                 dim=-1
@@ -121,6 +123,7 @@ class DenseSAKELayer(torch.nn.Module):
                 [
                     h,
                     h_e_agg,
+                    x_minus_xt_att_norm,
                 ],
                 dim=-1
             )
