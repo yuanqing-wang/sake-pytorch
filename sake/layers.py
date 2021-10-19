@@ -35,6 +35,7 @@ class DenseSAKELayer(torch.nn.Module):
             hidden_features: int,
             out_features: int,
             activation: Callable=torch.nn.SiLU(),
+            update_coordinate: bool=True,
         ):
         super(DenseSAKELayer, self).__init__()
         self.edge_weight_mlp = torch.nn.Sequential(
@@ -61,12 +62,16 @@ class DenseSAKELayer(torch.nn.Module):
             torch.nn.Linear(hidden_features, 1)
         )
 
+        self.update_coordinate = update_coordinate
+
     def forward(self, h, x):
         # x.shape = (n, 3)
         # h.shape = (n, d)
 
         # (n, n, 3)
         x_minus_xt = x.unsqueeze(-3) - x.unsqueeze(-2)
+
+        # (n, n, 1)
         x_minus_xt_norm = x_minus_xt.pow(2).sum(dim=-1, keepdims=True)
 
         # (n, n, d)
@@ -81,7 +86,7 @@ class DenseSAKELayer(torch.nn.Module):
         # (n, n, d)
         x_minus_xt_weight = self.edge_weight_mlp(
             h_cat_ht,
-        ).softmax(dim=-2)
+        )
 
         # (n, n, d, 3)
         x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * x_minus_xt.unsqueeze(-2)
@@ -101,8 +106,11 @@ class DenseSAKELayer(torch.nn.Module):
             ),
         )
 
-        # (n, 3)
-        _x = (x_minus_xt * self.coordinate_mlp(h_e)).sum(dim=-2) + x
+        if self.update_coordinate is True:
+            # (n, 3)
+            _x = (x_minus_xt * self.coordinate_mlp(h_e)).sum(dim=-2) + x
+        else:
+            _x = x
 
         # (n, d)
         h_e_agg = h_e.sum(dim=-2)
