@@ -55,17 +55,20 @@ class DenseSAKELayer(torch.nn.Module):
             out_features: int,
             activation: Callable=torch.nn.SiLU(),
             update_coordinate: bool=True,
-            distance_filter: Union[Callable, None]=None
+            distance_filter: Union[Callable, None]=None,
+            n_coefficients: int=16,
         ):
         super(DenseSAKELayer, self).__init__()
+
+        self.distance_filter = distance_filter
+        self.n_coefficients = n_coefficients
+
         self.edge_weight_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2 * in_features, hidden_features),
+            torch.nn.Linear(2 * in_features, n_coefficients),
             torch.nn.LeakyReLU(),
             # activation,
             # torch.nn.Linear(hidden_features, hidden_features),
         )
-
-        self.distance_filter = distance_filter
 
         if self.distance_filter is not None:
             self.distance_filter = self.distance_filter()
@@ -80,7 +83,7 @@ class DenseSAKELayer(torch.nn.Module):
         )
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(in_features + 2*hidden_features, hidden_features),
+            torch.nn.Linear(in_features + hidden_features + n_coefficients, hidden_features),
             # activation,
             # torch.nn.Linear(hidden_features, hidden_features),
         )
@@ -136,6 +139,7 @@ class DenseSAKELayer(torch.nn.Module):
 
         # (n, n, d, 3)
         x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * (x_minus_xt / (x_minus_xt_norm ** 2 + 1e-7)).unsqueeze(-2).softmax(dim=-3)
+        x_minus_xt_att = x_minus_xt_att * 2 - 1.0
 
         # (n, d, 3)
         x_minus_xt_att_sum = x_minus_xt_att.sum(dim=-3)
