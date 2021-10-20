@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import dgl
 from typing import Callable, Union
@@ -35,8 +36,8 @@ class ContinuousFilterConvolution(torch.nn.Module):
             mu=torch.arange(0, 30, 0.1),
             ):
         super(ContinuousFilterConvolution, self).__init__()
-        self.gamma = gamma
-        self.mu = mu
+        self.register_buffer("gamma", torch.tensor(gamma))
+        self.register_buffer("mu", torch.tensor(mu))
         self.out_features = len(mu)
 
     def forward(self, x):
@@ -66,6 +67,7 @@ class DenseSAKELayer(torch.nn.Module):
         self.distance_filter = distance_filter
 
         if self.distance_filter is not None:
+            self.distance_filter = self.distance_filter()
             distance_encoding_dimension = self.distance_filter.out_features
         else:
             distance_encoding_dimension = 1
