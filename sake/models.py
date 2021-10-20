@@ -13,7 +13,7 @@ class DenseSAKEModel(torch.nn.Module):
         depth: int=4,
         activation: Callable=torch.nn.SiLU(),
         sum_readout: Union[None, Callable]=None,
-        update_coordinate: bool=True,
+        *args, **kwargs,
     ):
         super(DenseSAKEModel, self).__init__()
         self.in_features = in_features
@@ -24,7 +24,6 @@ class DenseSAKEModel(torch.nn.Module):
         self.activation = activation
         self.depth = depth
         self.sum_readout = sum_readout
-        self.update_coordinate = update_coordinate
 
         for idx in range(0, depth):
             self.add_module(
@@ -33,7 +32,7 @@ class DenseSAKEModel(torch.nn.Module):
                     hidden_features=hidden_features,
                     out_features=hidden_features,
                     activation=activation,
-                    update_coordinate=update_coordinate,
+                    *args, **kwargs,
                 )
             )
 
