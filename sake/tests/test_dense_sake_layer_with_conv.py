@@ -6,7 +6,7 @@ def test_simple_forward():
     import torch
     x = torch.randn(8, 3)
     h = torch.randn(8, 5)
-    layer = sake.DenseSAKELayer(5, 6, 7, distance_filter=sake.ContinuousFilterConvolution())
+    layer = sake.DenseSAKELayer(5, 6, 7, distance_filter=sake.ContinuousFilterConvolution)
     _x, _h = layer(h, x)
 
 def test_layer_simple_graph_equivariant():
@@ -21,7 +21,7 @@ def test_layer_simple_graph_equivariant():
         torch.zeros(5, 3),
         torch.ones(5, 3),
     ).sample()
-    layer = sake.DenseSAKELayer(in_features=7, hidden_features=8, out_features=9, distance_filter=sake.ContinuousFilterConvolution())
+    layer = sake.DenseSAKELayer(in_features=7, hidden_features=8, out_features=9, distance_filter=sake.ContinuousFilterConvolution)
 
     # original
     h_original, x_original = layer(h0, x0)
@@ -116,7 +116,7 @@ def test_layer_simple_graph_equivariant_batch():
         torch.zeros(20, 5, 3),
         torch.ones(20, 5, 3),
     ).sample()
-    layer = sake.DenseSAKELayer(in_features=7, hidden_features=8, out_features=9)
+    layer = sake.DenseSAKELayer(in_features=7, hidden_features=8, out_features=9, distance_filter=sake.ContinuousFilterConvolution)
 
     # original
     h_original, x_original = layer(h0, x0)
