@@ -60,8 +60,9 @@ class DenseSAKELayer(torch.nn.Module):
         super(DenseSAKELayer, self).__init__()
         self.edge_weight_mlp = torch.nn.Sequential(
             torch.nn.Linear(2 * in_features, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.LeakyReLU(),
+            # activation,
+            # torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.distance_filter = distance_filter
@@ -75,13 +76,13 @@ class DenseSAKELayer(torch.nn.Module):
         self.edge_summary_mlp = torch.nn.Sequential(
             torch.nn.Linear(2*in_features+distance_encoding_dimension, hidden_features),
             activation,
-            torch.nn.Linear(hidden_features, hidden_features),
+            # torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(in_features + hidden_features, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.Linear(in_features + 2*hidden_features, hidden_features),
+            # activation,
+            # torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.coordinate_mlp = torch.nn.Sequential(
@@ -112,7 +113,9 @@ class DenseSAKELayer(torch.nn.Module):
         spatial_att_weights = x_minus_xt_norm.softmax(dim=-2)
 
         if self.distance_filter is not None:
-            x_minus_xt_norm = self.distance_filter(x_minus_xt_norm)
+            x_minus_xt_filtered = self.distance_filter(x_minus_xt_norm)
+        else:
+            x_minus_xt_filtered = x_minus_xt_norm
 
         # (n, n, 2*d)
         h_cat_ht = torch.cat(
@@ -132,7 +135,7 @@ class DenseSAKELayer(torch.nn.Module):
         )
 
         # (n, n, d, 3)
-        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * x_minus_xt.unsqueeze(-2)# .softmax(dim=-3)
+        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * (x_minus_xt / (x_minus_xt_norm ** 2 + 1e-7)).unsqueeze(-2).softmax(dim=-3)
 
         # (n, d, 3)
         x_minus_xt_att_sum = x_minus_xt_att.sum(dim=-3)
@@ -144,7 +147,7 @@ class DenseSAKELayer(torch.nn.Module):
         h_e = self.edge_summary_mlp(
             torch.cat(
                 [
-                    x_minus_xt_norm,
+                    x_minus_xt_filtered,
                     h_cat_ht
                 ],
                 dim=-1
@@ -166,7 +169,7 @@ class DenseSAKELayer(torch.nn.Module):
                 [
                     h,
                     h_e_agg,
-                    # x_minus_xt_att_norm,
+                    x_minus_xt_att_norm,
                 ],
                 dim=-1
             )
