@@ -108,7 +108,7 @@ class DenseSAKELayer(torch.nn.Module):
         x_minus_xt = x.unsqueeze(-3) - x.unsqueeze(-2)
 
         # (n, n, 1)
-        x_minus_xt_norm = x_minus_xt.pow(2).sum(dim=-1, keepdims=True).pow(0.5)
+        x_minus_xt_norm = x_minus_xt.pow(2).sum(dim=-1, keepdims=True).relu().pow(0.5)
 
         # (n, n, 1)
         spatial_att_weights = x_minus_xt_norm.softmax(dim=-2)
@@ -142,7 +142,7 @@ class DenseSAKELayer(torch.nn.Module):
         x_minus_xt_att_sum = x_minus_xt_att.sum(dim=-3)
 
         # (n, d)
-        x_minus_xt_att_norm = x_minus_xt_att_sum.pow(2).sum(-1)
+        x_minus_xt_att_norm = x_minus_xt_att_sum.pow(2).sum(-1).relu().pow(0.5)
 
         # (n, n, d)
         h_e = self.edge_summary_mlp(
