@@ -61,14 +61,14 @@ def test_model_derivatives():
     x0.requires_grad = True
 
     model = sake.DenseSAKEModel(
-            in_features=9,
+            in_features=7,
             hidden_features=128,
             depth=4,
             out_features=1,
             update_coordinate=False,
             n_coefficients=32,
             distance_filter=sake.ContinuousFilterConvolution,
-            activation=torch.nn.ELU(),
+            activation=torch.nn.SiLU(),
             batch_norm=True,
     )
 
