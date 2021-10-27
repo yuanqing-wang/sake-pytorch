@@ -29,11 +29,24 @@ class PNA(torch.nn.Module):
 
         return x
 
+class Coloring(torch.nn.Module):
+    def __init__(
+        self,
+        mu=0.0,
+        sigma=1.0,
+    ):
+        super(Coloring, self).__init__()
+        self.register_buffer("mu", torch.tensor(mu))
+        self.register_buffer("sigma", torch.tensor(sigma))
+
+    def forward(self, x):
+        return self.sigma * x + self.mu
+
 class ContinuousFilterConvolution(torch.nn.Module):
     def __init__(
             self,
             gamma=10.0,
-            mu=torch.arange(0, 30, 0.1),
+            mu=torch.arange(0, 30, 1.0),
             ):
         super(ContinuousFilterConvolution, self).__init__()
         self.register_buffer("gamma", torch.tensor(gamma))
@@ -43,9 +56,21 @@ class ContinuousFilterConvolution(torch.nn.Module):
     def forward(self, x):
         return torch.exp(
             -(x-self.mu.view(*[1 for _ in range(x.dim()-1)], -1)).pow(2) * self.gamma
-        ) * (
-            x.sign()
         )
+
+        
+class HardCutOff(torch.nn.Module):
+    def __init__(self, cutoff=5.0):
+        super(HardCutOff, self).__init__()
+        self.register_buffer("cutoff", torch.tensor(cutoff))
+
+    def forward(self, x):
+        return torch.where(
+            torch.gt(x, 0.0) * torch.lt(x, self.cutoff),
+            1.0,
+            0.0,
+        )
+
 
 class DenseSAKELayer(torch.nn.Module):
     def __init__(
@@ -57,15 +82,17 @@ class DenseSAKELayer(torch.nn.Module):
             update_coordinate: bool=True,
             distance_filter: Union[Callable, None]=None,
             n_coefficients: int=64,
+            cutoff=None
         ):
         super(DenseSAKELayer, self).__init__()
 
         self.distance_filter = distance_filter
         self.n_coefficients = n_coefficients
+        self.cutoff = cutoff
 
         self.edge_weight_mlp = torch.nn.Sequential(
             torch.nn.Linear(2 * in_features, n_coefficients),
-            torch.nn.Tanh(),
+            # torch.nn.Tanh(),
         )
 
         if self.distance_filter is not None:
@@ -108,7 +135,7 @@ class DenseSAKELayer(torch.nn.Module):
         x_minus_xt = x.unsqueeze(-3) - x.unsqueeze(-2)
 
         # (n, n, 1)
-        x_minus_xt_norm = x_minus_xt.pow(2).sum(dim=-1, keepdims=True).pow(0.5)
+        x_minus_xt_norm = x_minus_xt.pow(2).sum(dim=-1, keepdims=True).relu().pow(0.5)
 
         # (n, n, 1)
         spatial_att_weights = x_minus_xt_norm.softmax(dim=-2)
@@ -154,6 +181,10 @@ class DenseSAKELayer(torch.nn.Module):
                 dim=-1
             ),
         )
+
+        if self.cutoff is not None:
+            cutoff = self.cutoff(x_minus_xt_norm) 
+            h_e = h_e * cutoff
 
         if self.update_coordinate is True:
             # (n, 3)
