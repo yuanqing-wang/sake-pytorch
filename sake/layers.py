@@ -91,7 +91,7 @@ class DenseSAKELayer(torch.nn.Module):
 
         self.edge_weight_mlp = torch.nn.Sequential(
             torch.nn.Linear(2 * in_features, n_coefficients),
-            # torch.nn.Tanh(),
+            torch.nn.Tanh(),
         )
 
         if self.distance_filter is not None:
@@ -154,7 +154,7 @@ class DenseSAKELayer(torch.nn.Module):
         )
 
         # (n, n, 1)
-        semantic_att_weights = self.semantic_attention_mlp(h_cat_ht).softmax(dim=-2)
+        semantic_att_weights = self.semantic_attention_mlp(h_cat_ht)# .softmax(dim=-2)
 
         # (n, n, d)
         x_minus_xt_weight = self.edge_weight_mlp(
@@ -193,6 +193,7 @@ class DenseSAKELayer(torch.nn.Module):
 
         # (n, d)
         h_e_agg = ((semantic_att_weights * spatial_att_weights) * h_e).sum(dim=-2)
+
 
         # (n, d)
         _h = self.node_mlp(

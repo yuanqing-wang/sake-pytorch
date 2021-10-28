@@ -25,10 +25,12 @@ def test_rbf_derivatives():
 def test_layer_derivatives():
     import torch
     import sake
+
     h0 = torch.distributions.Normal(
         torch.zeros(20, 5, 7),
         torch.ones(20, 5, 7),
     ).sample()
+
     x0 = torch.distributions.Normal(
         torch.zeros(20, 5, 3),
         torch.ones(20, 5, 3),
@@ -36,27 +38,30 @@ def test_layer_derivatives():
 
     x0.requires_grad = True
     layer = sake.DenseSAKELayer(
-        in_features=7, hidden_features=8, out_features=9, n_coefficients=3, activation=torch.nn.SiLU(),
+        in_features=7,
+        hidden_features=8,
+        out_features=9,
+        n_coefficients=0,
+        activation=torch.nn.SiLU(),
+        distance_filter=sake.ContinuousFilterConvolution,
+        # batch_norm=True,
     )
-    
+
     h1, x1 = layer(h0, x0)
 
     dh1_dx0 = torch.autograd.grad(
-        (h1 - torch.rand_like(h1)).pow(2).sum(),
+        h1,
         x0,
-        # grad_outputs=torch.ones_like(h1),
+        grad_outputs=torch.ones_like(h1),
         create_graph=True,
         retain_graph=True,
     )[0]
 
-    print(dh1_dx0)
-
     assert (~torch.isnan(dh1_dx0)).all()
 
-    (dh1_dx0 - torch.ones_like(dh1_dx0)).sum().backward()
-    for name, module in layer.named_children():
-        for p in module.parameters():
-            print(p.grad)
+    (dh1_dx0 - torch.randn_like(dh1_dx0)).pow(2).sum().backward()
+    for p in layer.parameters():
+        print(p.grad)
 
 
 @pytest.mark.skip()
