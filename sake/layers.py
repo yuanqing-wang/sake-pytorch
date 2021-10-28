@@ -58,7 +58,7 @@ class ContinuousFilterConvolution(torch.nn.Module):
             -(x-self.mu.view(*[1 for _ in range(x.dim()-1)], -1)).pow(2) * self.gamma
         )
 
-        
+
 class HardCutOff(torch.nn.Module):
     def __init__(self, cutoff=5.0):
         super(HardCutOff, self).__init__()
@@ -70,7 +70,6 @@ class HardCutOff(torch.nn.Module):
             1.0,
             0.0,
         )
-
 
 class DenseSAKELayer(torch.nn.Module):
     def __init__(
@@ -135,7 +134,7 @@ class DenseSAKELayer(torch.nn.Module):
         x_minus_xt = x.unsqueeze(-3) - x.unsqueeze(-2)
 
         # (n, n, 1)
-        x_minus_xt_norm = x_minus_xt.pow(2).sum(dim=-1, keepdims=True).relu().pow(0.5)
+        x_minus_xt_norm = (x_minus_xt.pow(2).sum(dim=-1, keepdims=True).relu() + 1e-14).pow(0.5)
 
         # (n, n, 1)
         spatial_att_weights = x_minus_xt_norm.softmax(dim=-2)
@@ -163,13 +162,13 @@ class DenseSAKELayer(torch.nn.Module):
         )# .softmax(dim=-2) * 2 - 1.0
 
         # (n, n, d, 3)
-        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2 + 1e-7)).unsqueeze(-2))
+        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2 + 1e-14)).unsqueeze(-2))
 
         # (n, d, 3)
         x_minus_xt_att_sum = x_minus_xt_att.sum(dim=-3)
 
         # (n, d)
-        x_minus_xt_att_norm = x_minus_xt_att_sum.pow(2).sum(-1).relu().pow(0.5)
+        x_minus_xt_att_norm = (x_minus_xt_att_sum.pow(2).sum(-1).relu() + 1e-14).pow(0.5)
 
         # (n, n, d)
         h_e = self.edge_summary_mlp(
@@ -183,7 +182,7 @@ class DenseSAKELayer(torch.nn.Module):
         )
 
         if self.cutoff is not None:
-            cutoff = self.cutoff(x_minus_xt_norm) 
+            cutoff = self.cutoff(x_minus_xt_norm)
             h_e = h_e * cutoff
 
         if self.update_coordinate is True:
