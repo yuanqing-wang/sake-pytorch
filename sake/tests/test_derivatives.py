@@ -22,6 +22,7 @@ def test_rbf_derivatives():
 
     assert (~torch.isnan(dy_dx0)).all()
 
+@pytest.mark.skip()
 def test_layer_derivatives():
     import torch
     import sake
@@ -44,7 +45,6 @@ def test_layer_derivatives():
         n_coefficients=0,
         activation=torch.nn.SiLU(),
         distance_filter=sake.ContinuousFilterConvolution,
-        # batch_norm=True,
     )
 
     h1, x1 = layer(h0, x0)
@@ -64,7 +64,6 @@ def test_layer_derivatives():
         print(p.grad)
 
 
-@pytest.mark.skip()
 def test_model_derivatives():
     import torch
     import sake
@@ -87,7 +86,7 @@ def test_model_derivatives():
             update_coordinate=False,
             n_coefficients=32,
             distance_filter=sake.ContinuousFilterConvolution,
-            activation=torch.nn.SiLU(),
+            activation=torch.nn.ELU(),
             batch_norm=True,
     )
 
@@ -101,7 +100,6 @@ def test_model_derivatives():
 
     assert (~torch.isnan(dh1_dx0)).all()
 
-    dh1_dx0.sum().backward()
-    for name, module in model.named_children():
-        for p in module.parameters():
-            print(p.grad)
+    (dh1_dx0 - torch.randn_like(dh1_dx0)).pow(2).sum().backward()
+    for p in model.parameters():
+        print(p.grad)
