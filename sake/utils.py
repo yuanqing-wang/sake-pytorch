@@ -1,4 +1,5 @@
 import torch
+from typing import Callable
 
 AGGREGATORS = {
     'sum': torch.sum,
@@ -54,7 +55,6 @@ class RBF(torch.nn.Module):
             -(x-self.mu.view(*[1 for _ in range(x.dim()-1)], -1)).pow(2) * self.gamma
         )
 
-
 class HardCutOff(torch.nn.Module):
     def __init__(self, cutoff=5.0):
         super(HardCutOff, self).__init__()
@@ -66,3 +66,28 @@ class HardCutOff(torch.nn.Module):
             1.0,
             0.0,
         )
+
+class ContinuousFilterConvolution(torch.nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        activation: Callable=torch.nn.SiLU(),
+        kernel: Callable=RBF(),
+    ):
+        super(ContinuousFilterConvolution, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.kernel = kernel
+        kernel_dimension = kernel.out_features
+        self.mlp_in = torch.nn.Linear(in_features, kernel_dimension)
+        self.mlp_out = torch.nn.Sequential(
+            torch.nn.Linear(kernel_dimension, out_features),
+            activation,
+        )
+
+    def forward(self, h, x):
+        h = self.mlp_in(h)
+        x = self.kernel(x)
+        h = self.mlp_out(h * x)
+        return h

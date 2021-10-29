@@ -43,7 +43,6 @@ def test_layer_derivatives():
         out_features=9,
         n_coefficients=32,
         activation=torch.nn.SiLU(),
-        distance_filter=sake.RBF,
     )
 
     h1, x1 = layer(h0, x0)
@@ -85,7 +84,6 @@ def test_model_derivatives():
             out_features=1,
             update_coordinate=False,
             n_coefficients=32,
-            distance_filter=sake.RBF,
             activation=torch.nn.SiLU(),
             # batch_norm=True,
     )

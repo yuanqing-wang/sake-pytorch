@@ -3,7 +3,7 @@ import torch
 import dgl
 from typing import Callable, Union
 import itertools
-from .utils import PNA, Coloring, RBF, HardCutOff
+from .utils import PNA, Coloring, RBF, HardCutOff, ContinuousFilterConvolution
 
 class DenseSAKELayer(torch.nn.Module):
     def __init__(
@@ -13,7 +13,7 @@ class DenseSAKELayer(torch.nn.Module):
             out_features: int,
             activation: Callable=torch.nn.SiLU(),
             update_coordinate: bool=True,
-            distance_filter: Union[Callable, None]=None,
+            distance_filter: Callable=ContinuousFilterConvolution,
             n_coefficients: int=64,
             cutoff=None
         ):
@@ -28,21 +28,8 @@ class DenseSAKELayer(torch.nn.Module):
             torch.nn.Tanh(),
         )
 
-        if self.distance_filter is not None:
-            self.distance_filter = self.distance_filter()
-            distance_encoding_dimension = self.distance_filter.out_features
-            self.filter_weight_mlp = torch.nn.Sequential(
-                torch.nn.Linear(2*in_features, distance_encoding_dimension),
-                activation,
-                torch.nn.Linear(distance_encoding_dimension, distance_encoding_dimension),
-            )
-
-        else:
-            distance_encoding_dimension = 1
-
-        self.edge_summary_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2*in_features+distance_encoding_dimension, hidden_features),
-            activation,
+        self.distance_filter = self.distance_filter(
+            2 * in_features, hidden_features,
         )
 
         self.node_mlp = torch.nn.Sequential(
@@ -88,11 +75,7 @@ class DenseSAKELayer(torch.nn.Module):
         )
 
         if self.distance_filter is not None:
-            x_minus_xt_filtered = self.distance_filter(x_minus_xt_norm)
-            x_minus_xt_filtered = x_minus_xt_filtered * torch.eye(
-                     h_cat_ht.shape[-2], h_cat_ht.shape[-2], device=x_minus_xt_filtered.device,
-            ).unsqueeze(-1)
-            x_minus_xt_filtered = self.filter_weight_mlp(h_cat_ht) * x_minus_xt_filtered
+            x_minus_xt_filtered = self.distance_filter(h_cat_ht, x_minus_xt_norm)
         else:
             x_minus_xt_filtered = (x_minus_xt_norm + 0.1).pow(-1)
 
@@ -113,19 +96,7 @@ class DenseSAKELayer(torch.nn.Module):
         # (n, d)
         x_minus_xt_att_norm = (x_minus_xt_att_sum.pow(2).sum(-1).relu() + 1e-14).pow(0.5)
 
-        # (n, n, d)
-        # h_e = self.edge_summary_mlp(
-        #     torch.cat(
-        #         [
-        #             x_minus_xt_filtered,
-        #             h_cat_ht
-        #        ],
-        #         dim=-1
-        #     ),
-        # )
-        #
-
-        h_e = h_cat_hat + x_minus_xt_filtered
+        h_e = x_minus_xt_filtered
 
         if self.cutoff is not None:
             cutoff = self.cutoff(x_minus_xt_norm)
@@ -156,7 +127,6 @@ class DenseSAKELayer(torch.nn.Module):
         )
 
         return _h, _x
-
 
 class GlobalSumSAKELayer(torch.nn.Module):
     def __init__(

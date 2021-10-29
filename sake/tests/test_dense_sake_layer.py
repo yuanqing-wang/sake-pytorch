@@ -1,11 +1,6 @@
 import pytest
 import numpy.testing as npt
 
-def test_import():
-    import sake
-    from sake.layers import DenseSAKELayer
-    from sake import DenseSAKELayer
-
 def test_simple_forward():
     import sake
     import torch
