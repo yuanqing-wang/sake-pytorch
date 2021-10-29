@@ -1,4 +1,4 @@
-from . import layers
-from . import models
-from .layers import EGNNLayer, SAKELayer, GlobalSumSAKELayer, DenseSAKELayer, ContinuousFilterConvolution, HardCutOff, Coloring
+from . import layers, models, utils
+from .layers import EGNNLayer, SAKELayer, GlobalSumSAKELayer, DenseSAKELayer
+from .utils import RBF, HardCutOff, Coloring
 from .models import EGNN, DenseSAKEModel
