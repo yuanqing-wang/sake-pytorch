@@ -22,7 +22,6 @@ def test_rbf_derivatives():
 
     assert (~torch.isnan(dy_dx0)).all()
 
-@pytest.mark.skip()
 def test_layer_derivatives():
     import torch
     import sake
@@ -42,7 +41,7 @@ def test_layer_derivatives():
         in_features=7,
         hidden_features=8,
         out_features=9,
-        n_coefficients=0,
+        n_coefficients=32,
         activation=torch.nn.SiLU(),
         distance_filter=sake.ContinuousFilterConvolution,
     )
@@ -50,18 +49,19 @@ def test_layer_derivatives():
     h1, x1 = layer(h0, x0)
 
     dh1_dx0 = torch.autograd.grad(
-        h1,
+        h1.sum(),
         x0,
-        grad_outputs=torch.ones_like(h1),
         create_graph=True,
         retain_graph=True,
     )[0]
 
-    assert (~torch.isnan(dh1_dx0)).all()
+    print(dh1_dx0)
 
-    (dh1_dx0 - torch.randn_like(dh1_dx0)).pow(2).sum().backward()
-    for p in layer.parameters():
-        print(p.grad)
+    assert (~torch.isnan(dh1_dx0)).all()
+    #
+    # (dh1_dx0 - torch.randn_like(dh1_dx0)).pow(2).sum().backward()
+    # for p in layer.parameters():
+    #     print(p.grad)
 
 
 def test_model_derivatives():
@@ -78,28 +78,33 @@ def test_model_derivatives():
 
     x0.requires_grad = True
 
+
     model = sake.DenseSAKEModel(
             in_features=7,
-            hidden_features=128,
-            depth=4,
+            hidden_features=8,
+            depth=1,
             out_features=1,
             update_coordinate=False,
             n_coefficients=32,
             distance_filter=sake.ContinuousFilterConvolution,
-            activation=torch.nn.ELU(),
-            batch_norm=True,
+            activation=torch.nn.SiLU(),
+            # batch_norm=True,
     )
 
     h1, x1 = model(h0, x0)
 
     dh1_dx0 = torch.autograd.grad(
-        h1.sum(),
+        h1,
         x0,
+        grad_outputs=torch.ones_like(h1),
         create_graph=True,
+        retain_graph=True,
     )[0]
+
+    print(dh1_dx0)
 
     assert (~torch.isnan(dh1_dx0)).all()
 
-    (dh1_dx0 - torch.randn_like(dh1_dx0)).pow(2).sum().backward()
-    for p in model.parameters():
-        print(p.grad)
+    # (dh1_dx0 - torch.randn_like(dh1_dx0)).pow(2).sum().backward()
+    # for p in model.parameters():
+    #     print(p.grad)
