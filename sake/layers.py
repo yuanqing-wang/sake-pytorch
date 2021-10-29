@@ -97,6 +97,9 @@ class DenseSAKELayer(torch.nn.Module):
         if self.distance_filter is not None:
             self.distance_filter = self.distance_filter()
             distance_encoding_dimension = self.distance_filter.out_features
+            self.filter_weight_mlp = torch.nn.Sequential(
+                torch.nn.Linear(2*in_features, distance_encoding_dimension)
+            )
 
         else:
             distance_encoding_dimension = 1
@@ -139,11 +142,6 @@ class DenseSAKELayer(torch.nn.Module):
         # (n, n, 1)
         spatial_att_weights = x_minus_xt_norm.softmax(dim=-2)
 
-        if self.distance_filter is not None:
-            x_minus_xt_filtered = self.distance_filter(x_minus_xt_norm)
-        else:
-            x_minus_xt_filtered = (x_minus_xt_norm + 0.1).pow(-1)
-
         # (n, n, 2*d)
         h_cat_ht = torch.cat(
             [
@@ -152,6 +150,13 @@ class DenseSAKELayer(torch.nn.Module):
             ],
             dim=-1
         )
+
+        if self.distance_filter is not None:
+            x_minus_xt_filtered = self.distance_filter(x_minus_xt_norm)
+            x_minus_xt_filtered = x_minus_xt_filtered * torch.eye(h_cat_ht.shape[-2], h_cat_ht.shape[-2]).unsqueeze(-1)
+            # x_minus_xt_filtered = self.filter_weight_mlp(h_cat_ht) * x_minus_xt_filtered
+        else:
+            x_minus_xt_filtered = (x_minus_xt_norm + 0.1).pow(-1)
 
         # (n, n, 1)
         semantic_att_weights = self.semantic_attention_mlp(h_cat_ht)# .softmax(dim=-2)
