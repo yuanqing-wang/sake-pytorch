@@ -55,13 +55,12 @@ def test_layer_derivatives():
         retain_graph=True,
     )[0]
 
-    print(dh1_dx0)
-
     assert (~torch.isnan(dh1_dx0)).all()
     #
-    # (dh1_dx0 - torch.randn_like(dh1_dx0)).pow(2).sum().backward()
-    # for p in layer.parameters():
-    #     print(p.grad)
+    (dh1_dx0 - torch.randn_like(dh1_dx0)).pow(2).sum().backward()
+    for n, p in layer.named_parameters():
+        print(n)
+        print(p.grad)
 
 
 def test_model_derivatives():
