@@ -24,7 +24,7 @@ class DenseSAKELayer(torch.nn.Module):
         self.cutoff = cutoff
 
         self.edge_weight_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2 * in_features, n_coefficients),
+            torch.nn.Linear(2 * in_features + hidden_features, n_coefficients),
             torch.nn.Tanh(),
         )
 
@@ -84,7 +84,7 @@ class DenseSAKELayer(torch.nn.Module):
 
         # (n, n, d)
         x_minus_xt_weight = self.edge_weight_mlp(
-            h_cat_ht,
+            torch.cat([h_cat_ht, x_minus_xt_filtered], dim=-1),
         )# .softmax(dim=-2) * 2 - 1.0
 
         # (n, n, d, 3)
