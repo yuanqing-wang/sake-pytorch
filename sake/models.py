@@ -45,12 +45,12 @@ class DenseSAKEModel(torch.nn.Module):
     def forward(self, h, x):
         h = self.embedding_in(h)
         for idx in range(self.depth):
-            # h_ = h
+            h_ = h
             h, x = self._modules["EqLayer_%s" % idx](h, x)
             if self.batch_norm is True:
                 h = (self._modules["BatchNorm_%s" % idx](h.transpose(1, 2))).transpose(1, 2)
             h = self.activation(h)
-            # h = h + h_
+            h = h + h_
 
         h = self.embedding_out(h)
         if self.sum_readout is not None:

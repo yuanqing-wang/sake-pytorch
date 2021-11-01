@@ -34,8 +34,8 @@ class DenseSAKELayer(torch.nn.Module):
 
         self.node_mlp = torch.nn.Sequential(
             torch.nn.Linear(in_features + hidden_features + n_coefficients, hidden_features),
-            # activation,
-            # torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.coordinate_mlp = torch.nn.Sequential(
@@ -80,7 +80,7 @@ class DenseSAKELayer(torch.nn.Module):
             x_minus_xt_filtered = (x_minus_xt_norm + 0.1).pow(-1)
 
         # (n, n, 1)
-        semantic_att_weights = self.semantic_attention_mlp(h_cat_ht)# .softmax(dim=-2)
+        semantic_att_weights = self.semantic_attention_mlp(h_cat_ht).softmax(dim=-2)
 
         # (n, n, d)
         x_minus_xt_weight = self.edge_weight_mlp(
@@ -109,21 +109,20 @@ class DenseSAKELayer(torch.nn.Module):
             _x = x
 
         # (n, d)
-        # h_e_agg = ((semantic_att_weights * spatial_att_weights) * h_e).sum(dim=-2)
-        #
-        h_e_agg = h_e.sum(dim=-2)
+        total_attention_weights = (semantic_att_weights * spatial_att_weights).softmax(dim=-2)
+        h_e_agg = (total_attention_weights * h_e).sum(dim=-2)
 
         # (n, d)
         _h = self.node_mlp(
-            torch.cat(
-                [
-                    h,
-                    h_e_agg,
-                ] + [
-                    x_minus_xt_att_norm for _ in range(int(self.n_coefficients>0))
-                ],
-                dim=-1
-            )
+             torch.cat(
+                 [
+                     h,
+                     h_e_agg,
+                 ] + [
+                     x_minus_xt_att_norm for _ in range(int(self.n_coefficients>0))
+                 ],
+                 dim=-1
+             )
         )
 
         return _h, _x
