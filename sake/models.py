@@ -26,10 +26,11 @@ class DenseSAKEModel(torch.nn.Module):
         self.depth = depth
         self.sum_readout = sum_readout
         self.batch_norm = batch_norm
+        self.eq_layers = torch.nn.ModuleList()
 
         for idx in range(0, depth):
-            self.add_module(
-                "EqLayer_%s" % idx, DenseSAKELayer(
+            self.eq_layers.append(
+                DenseSAKELayer(
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
@@ -37,18 +38,11 @@ class DenseSAKEModel(torch.nn.Module):
                 )
             )
 
-            if self.batch_norm is True:
-                self.add_module(
-                    "BatchNorm_%s" % idx, torch.nn.BatchNorm1d(hidden_features),
-                )
-
     def forward(self, h, x):
         h = self.embedding_in(h)
-        for idx in range(self.depth):
+        for idx, eq_layer in enumerate(self.eq_layers):
             h_ = h
-            h, x = self._modules["EqLayer_%s" % idx](h, x)
-            if self.batch_norm is True:
-                h = (self._modules["BatchNorm_%s" % idx](h.transpose(1, 2))).transpose(1, 2)
+            h, x = eq_layer(h, x)
             h = self.activation(h)
             h = h + h_
 
