@@ -47,8 +47,8 @@ class ConditionalColoring(torch.nn.Module):
         sigma=1.0,
     ):
         super(ConditionalColoring, self).__init__()
-        self.register_buffer("w_mu", torch.ones(in_features, 1) * mu)
-        self.register_buffer("w_sigma", torch.ones(in_features, 1) * sigma)
+        self.w_mu = torch.nn.Parameter(torch.ones(in_features, 1) * mu)
+        self.w_sigma = torch.nn.Parameter(torch.ones(in_features, 1) * sigma)
 
     def forward(self, i, x):
         mu = i @ self.w_mu
@@ -104,7 +104,7 @@ class ContinuousFilterConvolution(torch.nn.Module):
 
     def forward(self, h, x):
         h = self.mlp_in(h)
-        x = self.kernel(x)        
+        x = self.kernel(x)
         h = self.mlp_out(h * x)  * (1.0 - torch.eye(x.shape[-2], x.shape[-2], device=x.device).unsqueeze(-1))
 
         return h
