@@ -39,6 +39,22 @@ class Coloring(torch.nn.Module):
     def forward(self, x):
         return self.sigma * x + self.mu
 
+class ConditionalColoring(torch.nn.Module):
+    def __init__(
+        self,
+        in_features,
+        mu=0.0,
+        sigma=1.0,
+    ):
+        super(ConditionalColoring, self).__init__()
+        self.register_buffer("w_mu", torch.ones(in_features, 1) * mu)
+        self.register_buffer("w_sigma", torch.ones(in_features, 1) * sigma)
+
+    def forward(self, i, x):
+        mu = i @ self.w_mu
+        sigma = i @ self.w_sigma
+        return x * sigma + mu
+
 class RBF(torch.nn.Module):
     def __init__(
             self,
