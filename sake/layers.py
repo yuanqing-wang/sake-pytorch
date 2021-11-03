@@ -66,16 +66,25 @@ class DenseSAKELayer(torch.nn.Module):
         x_minus_xt = x.unsqueeze(-3) - x.unsqueeze(-2)
 
         # (n, n, 1)
-        x_minus_xt_norm = (x_minus_xt.pow(2).sum(dim=-1, keepdims=True).relu() + 1e-14).pow(0.5)
+        x_minus_xt_norm = (x_minus_xt.pow(2).sum(dim=-1, keepdim=True).relu() + 1e-14).pow(0.5)
 
         # (n, n, 1)
         spatial_att_weights = x_minus_xt_norm.softmax(dim=-2)
 
         # (n, n, 2*d)
+        # h_cat_ht = torch.cat(
+        #     [
+        #        h.unsqueeze(-3).expand(*[-1 for _ in range(h.dim()-2)], h.shape[-2], -1, -1),
+        #        h.unsqueeze(-2).expand(*[-1 for _ in range(h.dim()-2)], -1, h.shape[-2], -1)
+        #    ],
+        #    dim=-1
+        # )
+
+
         h_cat_ht = torch.cat(
             [
-                h.unsqueeze(-3).expand(*[-1 for _ in range(h.dim()-2)], h.shape[-2], -1, -1),
-                h.unsqueeze(-2).expand(*[-1 for _ in range(h.dim()-2)], -1, h.shape[-2], -1)
+                h.unsqueeze(-3).repeat_interleave(h.shape[-2], -3),
+                h.unsqueeze(-2).repeat_interleave(h.shape[-2], -2),
             ],
             dim=-1
         )

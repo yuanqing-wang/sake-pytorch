@@ -68,7 +68,7 @@ class RBF(torch.nn.Module):
 
     def forward(self, x):
         return torch.exp(
-            -(x-self.mu.view(*[1 for _ in range(x.dim()-1)], -1)).pow(2) * self.gamma
+            -(x-self.mu).pow(2) * self.gamma
         )
 
 class HardCutOff(torch.nn.Module):
