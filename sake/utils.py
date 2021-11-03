@@ -43,7 +43,7 @@ class RBF(torch.nn.Module):
     def __init__(
             self,
             gamma=10.0,
-            mu=torch.arange(0, 30, 1.0),
+            mu=torch.linspace(0, 30, 300),
             ):
         super(RBF, self).__init__()
         self.register_buffer("gamma", torch.tensor(gamma))
@@ -88,6 +88,7 @@ class ContinuousFilterConvolution(torch.nn.Module):
 
     def forward(self, h, x):
         h = self.mlp_in(h)
-        x = self.kernel(x)
-        h = self.mlp_out(h * x)
+        x = self.kernel(x)        
+        h = self.mlp_out(h * x)  * (1.0 - torch.eye(x.shape[-2], x.shape[-2], device=x.device).unsqueeze(-1))
+
         return h

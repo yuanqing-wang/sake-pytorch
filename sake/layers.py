@@ -32,8 +32,14 @@ class DenseSAKELayer(torch.nn.Module):
             2 * in_features, hidden_features,
         )
 
+        self.post_norm_nlp = torch.nn.Sequential(
+            torch.nn.Linear(n_coefficients, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(in_features + hidden_features + n_coefficients, hidden_features),
+            torch.nn.Linear(hidden_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
         )
@@ -85,7 +91,7 @@ class DenseSAKELayer(torch.nn.Module):
         # (n, n, d)
         x_minus_xt_weight = self.edge_weight_mlp(
             torch.cat([h_cat_ht, x_minus_xt_filtered], dim=-1),
-        )# .softmax(dim=-2) * 2 - 1.0
+        )# .softmax(dim=-2)
 
         # (n, n, d, 3)
         x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + 1e-5)).unsqueeze(-2))
@@ -95,6 +101,8 @@ class DenseSAKELayer(torch.nn.Module):
 
         # (n, d)
         x_minus_xt_att_norm = (x_minus_xt_att_sum.pow(2).sum(-1).relu() + 1e-14).pow(0.5)
+        x_minus_xt_att_norm_embedding = self.post_norm_nlp(x_minus_xt_att_norm)
+
 
         h_e = x_minus_xt_filtered
 
@@ -112,18 +120,20 @@ class DenseSAKELayer(torch.nn.Module):
         total_attention_weights = (semantic_att_weights * spatial_att_weights).softmax(dim=-2)
         h_e_agg = (total_attention_weights * h_e).sum(dim=-2)
 
+        _h = self.node_mlp(h_e_agg + x_minus_xt_att_norm_embedding)
+
         # (n, d)
-        _h = self.node_mlp(
-             torch.cat(
-                 [
-                     h,
-                     h_e_agg,
-                 ] + [
-                     x_minus_xt_att_norm for _ in range(int(self.n_coefficients>0))
-                 ],
-                 dim=-1
-             )
-        )
+        # _h = self.node_mlp(
+        #      torch.cat(
+        #          [
+        #              h,
+        #              h_e_agg,
+        #          ] + [
+        #              x_minus_xt_att_norm for _ in range(int(self.n_coefficients>0))
+        #          ],
+        #          dim=-1
+        #      )
+        # )
 
         return _h, _x
 
