@@ -118,7 +118,7 @@ def bootstrap(metric, n_samples=100, ci=0.95):
         for _ in range(n_samples):
             idxs = torch.multinomial(
                 torch.ones(input.shape[0]),
-                n_samples=n_samples,
+                num_samples=n_samples,
                 replacement=True,
             )
 
@@ -135,3 +135,5 @@ def bootstrap(metric, n_samples=100, ci=0.95):
         high = np.percentile(results, (1 - ((1 - ci) * 0.5)) * 100.0)
 
         return original, low, high
+
+    return _bootstraped
