@@ -1,5 +1,6 @@
 import torch
 from typing import Callable
+import numpy as np
 
 AGGREGATORS = {
     'sum': torch.sum,
@@ -108,3 +109,29 @@ class ContinuousFilterConvolution(torch.nn.Module):
         h = self.mlp_out(h * x)  * (1.0 - torch.eye(x.shape[-2], x.shape[-2], device=x.device).unsqueeze(-1))
 
         return h
+
+
+def bootstrap(metric, n_samples=100, ci=0.95):
+    def _bootstraped(input, target, metric=metric, n_samples=n_samples, ci=ci):
+        original = metric(input=input, target=target).item()
+        results = []
+        for _ in range(n_samples):
+            idxs = torch.multinomial(
+                torch.ones(input.shape[0]),
+                n_samples=n_samples,
+                replacement=True,
+            )
+
+            _result = metric(
+                input=input[idxs],
+                target=target[idxs],
+            ).item()
+
+            results.append(_result)
+
+        results = np.array(results)
+
+        low = np.percentile(results, 100.0 * 0.5 * (1 - ci))
+        high = np.percentile(results, (1 - ((1 - ci) * 0.5)) * 100.0)
+
+        return original, low, high
