@@ -110,6 +110,27 @@ class ContinuousFilterConvolution(torch.nn.Module):
 
         return h
 
+class ConcatenationFilter(torch.nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        activation: Callable=torch.nn.SiLU(),
+    ):
+        super(ConcatenationFilter, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(in_features + 1, out_features),
+            activation,
+            torch.nn.Linear(out_features, out_features)
+        )
+
+    def forward(self, h, x):
+        h = self.mlp(
+            torch.cat([h, x], dim=-1),
+        )
+        return h
 
 def bootstrap(metric, n_samples=100, ci=0.95):
     def _bootstraped(input, target, metric=metric, n_samples=n_samples, ci=ci):

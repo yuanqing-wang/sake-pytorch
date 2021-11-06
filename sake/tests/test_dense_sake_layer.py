@@ -9,6 +9,14 @@ def test_simple_forward():
     layer = sake.DenseSAKELayer(5, 6, 7)
     _x, _h = layer(h, x)
 
+def test_simple_forward_concat_filter():
+    import sake
+    import torch
+    x = torch.randn(8, 3)
+    h = torch.randn(8, 5)
+    layer = sake.DenseSAKELayer(5, 6, 7, distance_filter=sake.ConcatenationFilter)
+    _x, _h = layer(h, x)
+
 def test_layer_simple_graph_equivariant():
     import torch
     import dgl

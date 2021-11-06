@@ -19,7 +19,6 @@ class DenseSAKELayer(torch.nn.Module):
         ):
         super(DenseSAKELayer, self).__init__()
 
-        self.distance_filter = distance_filter
         self.n_coefficients = n_coefficients
         self.cutoff = cutoff
 
@@ -28,7 +27,7 @@ class DenseSAKELayer(torch.nn.Module):
             torch.nn.Tanh(),
         )
 
-        self.distance_filter = self.distance_filter(
+        self.distance_filter = distance_filter(
             2 * in_features, hidden_features,
         )
 
@@ -72,15 +71,6 @@ class DenseSAKELayer(torch.nn.Module):
         spatial_att_weights = x_minus_xt_norm.softmax(dim=-2)
 
         # (n, n, 2*d)
-        # h_cat_ht = torch.cat(
-        #     [
-        #        h.unsqueeze(-3).expand(*[-1 for _ in range(h.dim()-2)], h.shape[-2], -1, -1),
-        #        h.unsqueeze(-2).expand(*[-1 for _ in range(h.dim()-2)], -1, h.shape[-2], -1)
-        #    ],
-        #    dim=-1
-        # )
-
-
         h_cat_ht = torch.cat(
             [
                 h.unsqueeze(-3).repeat_interleave(h.shape[-2], -3),
@@ -89,17 +79,14 @@ class DenseSAKELayer(torch.nn.Module):
             dim=-1
         )
 
-        if self.distance_filter is not None:
-            x_minus_xt_filtered = self.distance_filter(h_cat_ht, x_minus_xt_norm)
-        else:
-            x_minus_xt_filtered = (x_minus_xt_norm + 0.1).pow(-1)
+        h_e = self.distance_filter(h_cat_ht, x_minus_xt_norm)
 
         # (n, n, 1)
         semantic_att_weights = self.semantic_attention_mlp(h_cat_ht).softmax(dim=-2)
 
         # (n, n, d)
         x_minus_xt_weight = self.edge_weight_mlp(
-            torch.cat([h_cat_ht, x_minus_xt_filtered], dim=-1),
+            torch.cat([h_cat_ht, h_e], dim=-1),
         )# .softmax(dim=-2)
 
         # (n, n, d, 3)
@@ -111,13 +98,6 @@ class DenseSAKELayer(torch.nn.Module):
         # (n, d)
         x_minus_xt_att_norm = (x_minus_xt_att_sum.pow(2).sum(-1).relu() + 1e-14).pow(0.5)
         x_minus_xt_att_norm_embedding = self.post_norm_nlp(x_minus_xt_att_norm)
-
-
-        h_e = x_minus_xt_filtered
-
-        if self.cutoff is not None:
-            cutoff = self.cutoff(x_minus_xt_norm)
-            h_e = h_e * cutoff
 
         if self.update_coordinate is True:
             # (n, 3)
