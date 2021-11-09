@@ -87,7 +87,7 @@ class DenseSAKELayer(torch.nn.Module):
         # (n, n, d)
         x_minus_xt_weight = self.edge_weight_mlp(
             torch.cat([h_cat_ht, h_e], dim=-1),
-        )# .softmax(dim=-2)
+        ).softmax(dim=-2)
 
         # (n, n, d, 3)
         x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + 1e-5)).unsqueeze(-2))
