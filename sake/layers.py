@@ -21,8 +21,8 @@ class DenseSAKELayer(torch.nn.Module):
 
         self.n_coefficients = n_coefficients
         self.cutoff = cutoff
-        self.log_gamma_radial = torch.nn.Parameter(torch.tensor(0.0))
-        self.log_gamma_angular = torch.nn.Parameter(torch.tensor(0.0))
+        # self.log_gamma_radial = torch.nn.Parameter(torch.tensor(0.0))
+        # self.log_gamma_angular = torch.nn.Parameter(torch.tensor(0.0))
 
         self.edge_weight_mlp = torch.nn.Sequential(
             torch.nn.Linear(2 * in_features + hidden_features, n_coefficients),
@@ -70,7 +70,7 @@ class DenseSAKELayer(torch.nn.Module):
         x_minus_xt_norm = (x_minus_xt.pow(2).sum(dim=-1, keepdim=True).relu() + 1e-14).pow(0.5)
 
         # (n, n, 1)
-        spatial_att_weights = torch.nn.Softmin(dim=-2)(x_minus_xt_norm * self.log_gamma_radial.exp())
+        spatial_att_weights = torch.nn.Softmin(dim=-2)(x_minus_xt_norm)
 
         # (n, n, 2*d)
         h_cat_ht = torch.cat(
@@ -92,7 +92,7 @@ class DenseSAKELayer(torch.nn.Module):
         )# .softmax(dim=-2)
 
         # (n, n, d, 3)
-        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((torch.exp(-x_minus_xt_norm * self.log_gamma_angular.exp()) * x_minus_xt / (x_minus_xt_norm ** 2.0 + 1e-5)).unsqueeze(-2))
+        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + 1e-5)).unsqueeze(-2))
 
         # (n, d, 3)
         x_minus_xt_att_sum = x_minus_xt_att.sum(dim=-3)
