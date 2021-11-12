@@ -117,7 +117,7 @@ class DenseSAKELayer(torch.nn.Module):
         # (n, d)
         total_attention_weights = (semantic_att_weights * spatial_att_weights).softmax(dim=-2)
 
-        if self.mask is not None:
+        if self.cutoff is not None:
             total_attention_weights = total_attention_weights * mask
 
         h_e_agg = (total_attention_weights * h_e).sum(dim=-2)
