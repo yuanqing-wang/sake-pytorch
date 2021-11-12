@@ -64,6 +64,9 @@ class DenseSAKELayer(torch.nn.Module):
         # x.shape = (n, 3)
         # h.shape = (n, d)
 
+        if self.cutoff is not None:
+            mask = self.cutoff(x)
+
         # (n, n, 3)
         x_minus_xt = x.unsqueeze(-3) - x.unsqueeze(-2)
 
@@ -94,8 +97,10 @@ class DenseSAKELayer(torch.nn.Module):
         )# .softmax(dim=-2)
 
         # (n, n, d, 3)
-        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((torch.exp(-self.log_gamma1.exp() * _x_minus_xt_norm) * x_minus_xt * _x_minus_xt_norm.pow(-2)).unsqueeze(-2))
-        
+        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((torch.exp(-self.log_gamma1.exp() * _x_minus_xt_norm) * x_minus_xt).unsqueeze(-2))
+        if self.cutoff is not None:
+            x_minus_xt_att = x_minus_xt_att * mask.unsqueeze(-1)
+
         # (n, d, 3)
         x_minus_xt_att_sum = x_minus_xt_att.sum(dim=-3)
 
@@ -111,6 +116,10 @@ class DenseSAKELayer(torch.nn.Module):
 
         # (n, d)
         total_attention_weights = (semantic_att_weights * spatial_att_weights).softmax(dim=-2)
+
+        if self.mask is not None:
+            total_attention_weights = total_attention_weights * mask
+
         h_e_agg = (total_attention_weights * h_e).sum(dim=-2)
 
         _h = self.node_mlp(h_e_agg + x_minus_xt_att_norm_embedding)
