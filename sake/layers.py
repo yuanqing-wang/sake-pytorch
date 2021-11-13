@@ -40,8 +40,8 @@ class DenseSAKELayer(torch.nn.Module):
         )
 
         self.node_mlp = torch.nn.Sequential(
-            # torch.nn.Linear(2 * hidden_features + in_features, hidden_features),
-            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.Linear(2 * hidden_features + in_features, hidden_features),
+            # torch.nn.Linear(hidden_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
         )
@@ -64,14 +64,15 @@ class DenseSAKELayer(torch.nn.Module):
         # x.shape = (n, 3)
         # h.shape = (n, d)
 
-        if self.cutoff is not None:
-            mask = self.cutoff(x)
-
         # (n, n, 3)
         x_minus_xt = x.unsqueeze(-3) - x.unsqueeze(-2)
 
         # (n, n, 1)
         x_minus_xt_norm = (x_minus_xt.pow(2).sum(dim=-1, keepdim=True).relu() + 1e-14).pow(0.5)
+        if self.cutoff is not None:
+            mask = self.cutoff(x_minus_xt_norm)
+
+
         _x_minus_xt_norm = x_minus_xt_norm + 1e10 * torch.eye(x_minus_xt_norm.shape[-2], x_minus_xt_norm.shape[-2], device=x_minus_xt_norm.device).unsqueeze(-1)
 
         # (n, n, 1)
@@ -86,7 +87,7 @@ class DenseSAKELayer(torch.nn.Module):
             dim=-1
         )
 
-        h_e = self.distance_filter(h_cat_ht, x_minus_xt_norm)
+        h_e = self.distance_filter(h_cat_ht, torch.exp(-_x_minus_xt_norm))
 
         # (n, n, 1)
         semantic_att_weights = self.semantic_attention_mlp(h_cat_ht).softmax(dim=-2)
@@ -97,7 +98,7 @@ class DenseSAKELayer(torch.nn.Module):
         )# .softmax(dim=-2)
 
         # (n, n, d, 3)
-        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((torch.exp(-self.log_gamma1.exp() * _x_minus_xt_norm) * x_minus_xt).unsqueeze(-2))
+        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((torch.exp(-self.log_gamma1.exp() * _x_minus_xt_norm) * x_minus_xt * _x_minus_xt_norm.pow(-2)).unsqueeze(-2))
         if self.cutoff is not None:
             x_minus_xt_att = x_minus_xt_att * mask.unsqueeze(-1)
 
@@ -122,19 +123,19 @@ class DenseSAKELayer(torch.nn.Module):
 
         h_e_agg = (total_attention_weights * h_e).sum(dim=-2)
 
-        _h = self.node_mlp(h_e_agg + x_minus_xt_att_norm_embedding)
+        # _h = self.node_mlp(h_e_agg + x_minus_xt_att_norm_embedding)
 
         # (n, d)
-        # _h = self.node_mlp(
-        #       torch.cat(
-        #           [
-        #               h,
-        #               h_e_agg,
-        #               x_minus_xt_att_norm_embedding,
-        #           ],
-        #           dim=-1
-        #       )
-        # )
+        _h = self.node_mlp(
+               torch.cat(
+                   [
+                       h,
+                       h_e_agg,
+                       x_minus_xt_att_norm_embedding,
+                   ],
+                   dim=-1
+               )
+        )
 
         return _h, _x
 

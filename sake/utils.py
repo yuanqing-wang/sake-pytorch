@@ -81,7 +81,7 @@ class HardCutOff(torch.nn.Module):
         return torch.where(
             torch.gt(x, 0.0) * torch.lt(x, self.cutoff),
             1.0,
-            0.0,
+            1e-14,
         )
 
 class ContinuousFilterConvolution(torch.nn.Module):
