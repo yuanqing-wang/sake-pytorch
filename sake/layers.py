@@ -49,7 +49,8 @@ class DenseSAKELayer(torch.nn.Module):
         self.coordinate_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
             activation,
-            torch.nn.Linear(hidden_features, 1)
+            torch.nn.Linear(hidden_features, 1),
+            torch.nn.Tanh(),
         )
 
         self.semantic_attention_mlp = torch.nn.Sequential(
@@ -87,7 +88,7 @@ class DenseSAKELayer(torch.nn.Module):
             dim=-1
         )
 
-        h_e = self.distance_filter(h_cat_ht, torch.exp(-_x_minus_xt_norm))
+        h_e = self.distance_filter(h_cat_ht, x_minus_xt_norm)
 
         # (n, n, 1)
         semantic_att_weights = self.semantic_attention_mlp(h_cat_ht).softmax(dim=-2)
@@ -98,7 +99,7 @@ class DenseSAKELayer(torch.nn.Module):
         )# .softmax(dim=-2)
 
         # (n, n, d, 3)
-        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((torch.exp(-self.log_gamma1.exp() * _x_minus_xt_norm) * x_minus_xt * _x_minus_xt_norm.pow(-2)).unsqueeze(-2))
+        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((torch.exp(-self.log_gamma1.exp() * _x_minus_xt_norm) * _x_minus_xt_norm.pow(-2) * x_minus_xt).unsqueeze(-2))
         if self.cutoff is not None:
             x_minus_xt_att = x_minus_xt_att * mask.unsqueeze(-1)
 
