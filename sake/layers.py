@@ -5,6 +5,101 @@ from typing import Callable, Union
 import itertools
 from .utils import PNA, Coloring, RBF, HardCutOff, ContinuousFilterConvolution
 
+
+class SAKELayer(torch.nn.Module):
+    def __init__(
+            self,
+            in_features: int,
+            hidden_features: int,
+            out_features: int,
+            activation: Callable=torch.nn.SiLU(),
+            update_coordinate: bool=True,
+            distance_filter: Callable=ContinuousFilterConvolution,
+            n_coefficients: int=64,
+            cutoff=None
+        ):
+        super(DenseSAKELayer, self).__init__()
+
+        self.n_coefficients = n_coefficients
+        self.cutoff = cutoff
+        self.log_gamma0 = torch.nn.Parameter(torch.tensor(0.0))
+        self.log_gamma1 = torch.nn.Parameter(torch.tensor(0.0))
+
+        self.edge_weight_mlp = torch.nn.Sequential(
+            torch.nn.Linear(2 * in_features + hidden_features, n_coefficients),
+            torch.nn.Tanh(),
+        )
+
+        self.distance_filter = distance_filter(
+            2 * in_features, hidden_features,
+        )
+
+        self.post_norm_nlp = torch.nn.Sequential(
+            torch.nn.Linear(n_coefficients, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+
+        self.node_mlp = torch.nn.Sequential(
+            torch.nn.Linear(2 * hidden_features + in_features, hidden_features),
+            # torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+
+        self.coordinate_mlp = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, 1)
+        )
+
+        self.semantic_attention_mlp = torch.nn.Sequential(
+            torch.nn.Linear(2*in_features, 1, bias=False),
+            activation,
+        )
+
+        self.update_coordinate = update_coordinate
+        self.inf = 1e10
+        self.epsilon = 1e-14
+
+    def get_distance(self, x_src, x_dst):
+        # (n, 3)
+        x_minus_xt = x_src - x_dst
+
+        # (n, 1)
+        # norm without modifying the diag
+        x_minus_xt_norm = (
+            x_minus_xt.pow(2).sum(dim=-1, keepdim=True).relu() + self.epsilon
+        ).pow(0.5)
+
+        # (n, 1)
+        # norm with diag modified
+        _x_minus_xt_norm = x_minus_xt_norm \
+            + self.inf * torch.eye(
+                x_minus_xt_norm.shape[-2],
+                x_minus_xt_norm.shape[-2],
+                device=x_minus_xt_norm.device
+        ).unsqueeze(-1)
+
+        return x_minus_xt_norm, _x_minus_xt_norm
+
+    def get_edge_semantic_embedding(self, h_src, h_dst):
+        # (n, 2*d)
+        h_e = torch.cat(
+            [
+                h_src,
+                h_dst
+            ],
+            dim=-1
+        )
+
+        return h_e
+
+
+
+
+
+
 class DenseSAKELayer(torch.nn.Module):
     def __init__(
             self,
