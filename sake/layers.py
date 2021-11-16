@@ -17,7 +17,7 @@ class SAKELayer(torch.nn.Module):
             n_coefficients: int=64,
             cutoff=None
         ):
-        super(DenseSAKELayer, self).__init__()
+        super().__init__()
 
         self.n_coefficients = n_coefficients
         self.cutoff = cutoff
@@ -63,6 +63,10 @@ class SAKELayer(torch.nn.Module):
 
 
 class SparseSAKELayer(SAKELayer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+
     def forward(self, g, h, x):
         g.ndata['h'], g.ndata['x'] = h, x
 
@@ -188,6 +192,9 @@ class SparseSAKELayer(SAKELayer):
         return g.ndata["h"], g.ndata["x"]
 
 class DenseSAKELayer(SAKELayer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
     def forward(self, h, x):
         # x.shape = (n, 3)
         # h.shape = (n, d)
