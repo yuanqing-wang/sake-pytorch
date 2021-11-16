@@ -5,7 +5,6 @@ from typing import Callable, Union
 import itertools
 from .utils import PNA, Coloring, RBF, HardCutOff, ContinuousFilterConvolution
 
-
 class SAKELayer(torch.nn.Module):
     def __init__(
             self,
@@ -60,102 +59,135 @@ class SAKELayer(torch.nn.Module):
 
         self.update_coordinate = update_coordinate
         self.inf = 1e10
-        self.epsilon = 1e-14
+        self.epsilon = 1e-10
 
-    def get_distance(self, x_src, x_dst):
-        # (n, 3)
-        x_minus_xt = x_src - x_dst
 
-        # (n, 1)
-        # norm without modifying the diag
-        x_minus_xt_norm = (
-            x_minus_xt.pow(2).sum(dim=-1, keepdim=True).relu() + self.epsilon
-        ).pow(0.5)
+class SparseSAKELayer(SAKELayer):
+    def forward(self, g, h, x):
+        g.ndata['h'], g.ndata['x'] = h, x
 
-        # (n, 1)
-        # norm with diag modified
-        _x_minus_xt_norm = x_minus_xt_norm \
-            + self.inf * torch.eye(
-                x_minus_xt_norm.shape[-2],
-                x_minus_xt_norm.shape[-2],
-                device=x_minus_xt_norm.device
-        ).unsqueeze(-1)
+        g.apply_edges(dgl.function.u_sub_v('x', 'x', 'x_minus_xt'))
 
-        return x_minus_xt_norm, _x_minus_xt_norm
-
-    def get_edge_semantic_embedding(self, h_src, h_dst):
-        # (n, 2*d)
-        h_e = torch.cat(
-            [
-                h_src,
-                h_dst
-            ],
-            dim=-1
+        g.apply_edges(
+            lambda edges: {
+                'x_minus_xt_norm':
+                (edges.data['x_minus_xt'].pow(2).sum(dim=-1, keepdim=True).relu() + self.epsilon).pow(0.5)
+            }
         )
 
-        return h_e
-
-
-
-
-
-
-class DenseSAKELayer(torch.nn.Module):
-    def __init__(
-            self,
-            in_features: int,
-            hidden_features: int,
-            out_features: int,
-            activation: Callable=torch.nn.SiLU(),
-            update_coordinate: bool=True,
-            distance_filter: Callable=ContinuousFilterConvolution,
-            n_coefficients: int=64,
-            cutoff=None
-        ):
-        super(DenseSAKELayer, self).__init__()
-
-        self.n_coefficients = n_coefficients
-        self.cutoff = cutoff
-        self.log_gamma0 = torch.nn.Parameter(torch.tensor(0.0))
-        self.log_gamma1 = torch.nn.Parameter(torch.tensor(0.0))
-
-        self.edge_weight_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2 * in_features + hidden_features, n_coefficients),
-            torch.nn.Tanh(),
+        g.apply_edges(
+            lambda edges: {"-x_minus_xt_norm": -edges.data['x_minus_xt_norm'] * self.log_gamma0.exp()},
         )
 
-        self.distance_filter = distance_filter(
-            2 * in_features, hidden_features,
+        g.apply_edges(
+            lambda edges: {"h_cat_ht": torch.cat([edges.src['h'], edges.dst['h']], dim=-1)},
         )
 
-        self.post_norm_nlp = torch.nn.Sequential(
-            torch.nn.Linear(n_coefficients, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, hidden_features),
+        g.apply_edges(
+            lambda edges: {
+                "h_e":
+                self.distance_filter(
+                    edges.data["h_cat_ht"],
+                    edges.data["x_minus_xt_norm"]
+                )
+            }
         )
 
-        self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2 * hidden_features + in_features, hidden_features),
-            # torch.nn.Linear(hidden_features, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, hidden_features),
+        g.edata["euclidean_weights"] = dgl.nn.functional.edge_softmax(
+            g, g.edata["-x_minus_xt_norm"]
         )
 
-        self.coordinate_mlp = torch.nn.Sequential(
-            torch.nn.Linear(hidden_features, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, 1),
-            torch.nn.Tanh(),
+        g.edata["semantic_weights"] = dgl.nn.functional.edge_softmax(
+            g, self.semantic_attention_mlp(g.edata["h_cat_ht"]),
         )
 
-        self.semantic_attention_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2*in_features, 1, bias=False),
-            activation,
+        g.apply_edges(
+            lambda edges: {
+                "total_attention_weights": edges.data["euclidean_weights"] * edges.data["semantic_weights"]
+            }
         )
 
-        self.update_coordinate = update_coordinate
+        g.edata["total_attention_weights"] = dgl.nn.functional.edge_softmax(
+            g, g.edata["total_attention_weights"],
+        )
+
+        g.apply_edges(
+            lambda edges: {
+                "higher_order_weights":
+                self.edge_weight_mlp(
+                    torch.cat(
+                        [
+                            edges.data["h_cat_ht"],
+                            edges.data["h_e"]
+                        ],
+                        dim=-1
+                    )
+                ),
+                "h_e_att": edges.data["total_edge_weights"] * edges.data["h_e"]
+            }
+        )
+
+        g.apply_edges(
+            lambda edges: {
+                "x_minus_xt_att":
+                edges.data["higher_order_weights"].unsqueeze(-1)\
+                * (
+                    torch.exp(
+                        -self.log_gamma1.exp()\
+                        * edges.data["x_minus_xt_norm"]
+                    )\
+                    * edges.data["x_minus_xt_norm"].pow(-2)\
+                    * edges.data["x_minus_xt"]
+                ).unsqueeze(-2)
+            }
+        )
+
+        g.update_all(
+            message_func=dgl.function.copy_e("x_minus_xt_att", "x_minus_xt_att"),
+            reduce_func=dgl.function.sum("x_minus_xt_att", "x_minus_xt_att_sum"),
+            apply_node_func=lambda nodes: {
+                "x_minus_xt_att_norm_embedding": self.post_norm_nlp(
+                    (nodes.data["x_minus_xt_att_sum"].pow(2).sum(-1).relu() + self.epsilon).pow(0.5)
+                )
+            }
+        )
 
 
+        g.update_all(
+            message_func=dgl.function.copy_e("h_e_att", "h_e_att"),
+            reduce_func=dgl.function.sum("h_e_att", "h_e_agg"),
+        )
+
+        g.apply_nodes(
+            lambda nodes: {
+                "h": self.node_mlp(
+                    torch.cat(
+                        [
+                            nodes.data["h"],
+                            nodes.data["h_e_agg"],
+                            nodes.data["x_minus_xt_att_norm_embedding"]
+                        ]
+                    )
+                )
+            }
+        )
+
+        if self.update_coordinate is True:
+            g.apply_edges(
+                lambda edges: {
+                    "x_e": edges.data["x_minus_xt"] * self.coordinate_mlp(edges.data["h_e"])
+                }
+            )
+
+            g.update_all(
+                message_func=dgl.function.copy_e("x_e", "x_e"),
+                reduce_func=dgl.function.sum("x_e", "x_e"),
+                apply_node_func=lambda nodes: {"x": nodes.data["x"] + nodes.data["x_e"]}
+            )
+
+        return g.ndata["h"], g.ndata["x"]
+
+class DenseSAKELayer(SAKELayer):
     def forward(self, h, x):
         # x.shape = (n, 3)
         # h.shape = (n, d)
@@ -164,7 +196,7 @@ class DenseSAKELayer(torch.nn.Module):
         x_minus_xt = x.unsqueeze(-3) - x.unsqueeze(-2)
 
         # (n, n, 1)
-        x_minus_xt_norm = (x_minus_xt.pow(2).sum(dim=-1, keepdim=True).relu() + 1e-14).pow(0.5)
+        x_minus_xt_norm = (x_minus_xt.pow(2).sum(dim=-1, keepdim=True).relu() + self.epsilon).pow(0.5)
         if self.cutoff is not None:
             mask = self.cutoff(x_minus_xt_norm)
 
