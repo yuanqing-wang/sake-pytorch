@@ -7,18 +7,8 @@ def test_import():
 
 def test_layer_init():
     import sake
-    layer = sake.layers.SAKELayer(in_features=7, hidden_features=8, out_features=9)
+    layer = sake.layers.SparseSAKELayer(in_features=7, hidden_features=8, out_features=9)
 
-# def test_layer_simple_graph_zeros():
-#     import torch
-#     import dgl
-#     import egnn
-#     g = dgl.rand_graph(5, 8)
-#     h = torch.zeros(5, 7)
-#     x = torch.zeros(5, 3)
-#     layer = egnn.EGNNLayer(in_features=7, hidden_features=8, out_features=9)
-#     h, x = layer(g, h, x)
-#     assert (x == 0).all()
 
 def test_layer_simple_graph_equivariant():
     import torch
@@ -33,7 +23,7 @@ def test_layer_simple_graph_equivariant():
         torch.zeros(5, 3),
         torch.ones(5, 3),
     ).sample()
-    layer = sake.SAKELayer(in_features=7, hidden_features=8, out_features=9)
+    layer = sake.SparseSAKELayer(in_features=7, hidden_features=8, out_features=9)
 
     # original
     h_original, x_original = layer(g, h0, x0)
@@ -132,7 +122,7 @@ def test_layer_simple_graph_equivariant_with_edge():
         torch.zeros(5, 3),
         torch.ones(5, 3),
     ).sample()
-    layer = sake.SAKELayer(in_features=7, hidden_features=8, out_features=9, edge_features=1)
+    layer = sake.SparseSAKELayer(in_features=7, hidden_features=8, out_features=9, edge_features=1)
 
     # original
     h_original, x_original = layer(g, h0, x0, edge_feat=torch.zeros(15, 1))
