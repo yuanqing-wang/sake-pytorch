@@ -127,7 +127,7 @@ class SparseSAKELayer(SAKELayer):
                         dim=-1
                     )
                 ),
-                "h_e_att": edges.data["total_edge_weights"] * edges.data["h_e"]
+                "h_e_att": edges.data["total_attention_weights"] * edges.data["h_e"]
             }
         )
 
@@ -170,7 +170,8 @@ class SparseSAKELayer(SAKELayer):
                             nodes.data["h"],
                             nodes.data["h_e_agg"],
                             nodes.data["x_minus_xt_att_norm_embedding"]
-                        ]
+                        ],
+                        dim=-1,
                     )
                 )
             }
