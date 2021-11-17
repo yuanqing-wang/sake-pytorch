@@ -3,27 +3,18 @@ import numpy.testing as npt
 
 def test_import():
     import sake
+    import sake.layers
 
 def test_layer_init():
     import sake
-    model = sake.EGNN(in_features=7, hidden_features=8, out_features=9)
+    layer = sake.layers.SparseSAKELayer(in_features=7, hidden_features=8, out_features=9)
 
-# def test_layer_simple_graph_zeros():
-#     import torch
-#     import dgl
-#     import egnn
-#     g = dgl.rand_graph(5, 8)
-#     h = torch.zeros(5, 7)
-#     x = torch.zeros(5, 3)
-#     layer = egnn.EGNNLayer(in_features=7, hidden_features=8, out_features=9)
-#     h, x = layer(g, h, x)
-#     assert (x == 0).all()
 
 def test_layer_simple_graph_equivariant():
     import torch
     import dgl
     import sake
-    g = dgl.rand_graph(5, 8)
+    g = dgl.rand_graph(5, 15)
     h0 = torch.distributions.Normal(
         torch.zeros(5, 7),
         torch.ones(5, 7),
@@ -32,10 +23,10 @@ def test_layer_simple_graph_equivariant():
         torch.zeros(5, 3),
         torch.ones(5, 3),
     ).sample()
-    net = sake.EGNN(in_features=7, hidden_features=8, out_features=9)
+    layer = sake.SparseSAKELayer(in_features=7, hidden_features=8, out_features=9)
 
     # original
-    h_original, x_original = net(g, h0, x0)
+    h_original, x_original = layer(g, h0, x0)
 
     # ~~~~~~~~~~~
     # translation
@@ -45,7 +36,7 @@ def test_layer_simple_graph_equivariant():
         torch.ones(1, 3),
     ).sample()
 
-    h_translation, x_translation = net(
+    h_translation, x_translation = layer(
         g,
         h0,
         x0 + translation
@@ -87,13 +78,13 @@ def test_layer_simple_graph_equivariant():
         ]
     )
 
-    h_rotation, x_rotation = net(
+    h_rotation, x_rotation = layer(
         g,
         h0,
         x0 @ rz @ ry @ rx,
     )
 
-    npt.assert_almost_equal(h_rotation.detach().numpy(), h_original.detach().numpy(), decimal=2)
+    npt.assert_almost_equal(h_rotation.detach().numpy(), h_original.detach().numpy(), decimal=1)
     npt.assert_almost_equal(x_rotation.detach().numpy(), (x_original @ rz @ ry @ rx).detach().numpy(), decimal=2)
 
     # ~~~~~~~~~~
@@ -107,7 +98,7 @@ def test_layer_simple_graph_equivariant():
 
     p = torch.eye(3) - 2 * v.T @ v
 
-    h_reflection, x_reflection = net(
+    h_reflection, x_reflection = layer(
         g,
         h0,
         x0 @ p,

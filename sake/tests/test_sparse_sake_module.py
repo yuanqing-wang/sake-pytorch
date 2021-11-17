@@ -6,9 +6,8 @@ def test_import():
 
 def test_layer_init():
     import sake
-    model = sake.EGNN(
+    model = sake.SparseSAKEModel(
         in_features=7, hidden_features=8, out_features=9,
-        layer=sake.SAKELayer,
     )
 
 # def test_layer_simple_graph_zeros():
@@ -35,7 +34,7 @@ def test_layer_simple_graph_equivariant():
         torch.zeros(5, 3),
         torch.ones(5, 3),
     ).sample()
-    net = sake.EGNN(in_features=7, hidden_features=8, out_features=9, layer=sake.SAKELayer)
+    net = sake.SparseSAKEModel(in_features=7, hidden_features=8, out_features=9)
 
     # original
     h_original, x_original = net(g, h0, x0)
