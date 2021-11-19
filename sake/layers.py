@@ -181,7 +181,15 @@ class SparseSAKELayer(SAKELayer):
         if self.update_coordinate is True:
             g.apply_edges(
                 lambda edges: {
-                    "x_e": edges.data["x_minus_xt"] * self.coordinate_mlp(edges.data["h_e"])
+                    "x_e": edges.data["x_minus_xt"] * self.coordinate_mlp(
+                        torch.cat(
+                            [
+                                edges.data["h_e"],
+                                edges.data["h_cat_ht"],
+                            ],
+                            dim=-1
+                        ),
+                    )
                 }
             )
 
