@@ -211,10 +211,15 @@ class DenseSAKELayer(SAKELayer):
         x_minus_xt = x.unsqueeze(-3) - x.unsqueeze(-2)
 
         # (n, n, 1)
-        x_minus_xt_norm = (x_minus_xt.pow(2).sum(dim=-1, keepdim=True).relu() + 1e-14).pow(0.5)
+        x_minus_xt_norm = (x_minus_xt.pow(2).sum(dim=-1, keepdim=True).relu() + self.epsilon).pow(0.5)
+        _x_minus_xt_norm = x_minus_xt_norm + self.inf * torch.eye(
+            x_minus_xt_norm.shape[-2],
+            x_minus_xt_norm.shape[-2],
+            device=x_minus_xt_norm.device,
+        ).unsqueeze(-1)
 
         # (n, n, 1)
-        spatial_att_weights = x_minus_xt_norm.softmax(dim=-2)
+        spatial_att_weights = torch.nn.Softmin(dim=-2)(_x_minus_xt_norm)
 
         # (n, n, 2*d)
         # h_cat_ht = torch.cat(
@@ -248,13 +253,13 @@ class DenseSAKELayer(SAKELayer):
         )# .softmax(dim=-2)
 
         # (n, n, d, 3)
-        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + 1e-5)).unsqueeze(-2))
+        x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + self.epsilon)).unsqueeze(-2))
 
         # (n, d, 3)
         x_minus_xt_att_sum = x_minus_xt_att.sum(dim=-3)
 
         # (n, d)
-        x_minus_xt_att_norm = (x_minus_xt_att_sum.pow(2).sum(-1).relu() + 1e-14).pow(0.5)
+        x_minus_xt_att_norm = (x_minus_xt_att_sum.pow(2).sum(-1).relu() + self.epsilon).pow(0.5)
         x_minus_xt_att_norm_embedding = self.post_norm_nlp(x_minus_xt_att_norm)
 
 
