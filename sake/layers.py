@@ -25,7 +25,9 @@ class SAKELayer(torch.nn.Module):
         self.log_gamma1 = torch.nn.Parameter(torch.tensor(0.0))
 
         self.edge_weight_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2 * in_features + hidden_features, n_coefficients),
+            torch.nn.Linear(2 * in_features + hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, n_coefficients),
             torch.nn.Tanh(),
         )
 
@@ -36,25 +38,26 @@ class SAKELayer(torch.nn.Module):
         self.post_norm_nlp = torch.nn.Sequential(
             torch.nn.Linear(n_coefficients, hidden_features),
             activation,
-            # torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.node_mlp = torch.nn.Sequential(
             torch.nn.Linear(2 * hidden_features + in_features, hidden_features),
-            # torch.nn.Linear(hidden_features, hidden_features),
-            # activation,
-            # torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.coordinate_mlp = torch.nn.Sequential(
-            # torch.nn.Linear(hidden_features, hidden_features),
-            # activation,
-            torch.nn.Linear(2 * in_features + hidden_features, 1),
+            torch.nn.Linear(2 * in_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, 1),
             torch.nn.Tanh(),
         )
 
         self.semantic_attention_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2*in_features, 1, bias=False),
+            torch.nn.Linear(2*in_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, 1),
             activation,
         )
 
@@ -256,7 +259,7 @@ class DenseSAKELayer(SAKELayer):
 
         if self.update_coordinate is True:
             # (n, 3)
-            _x = (x_minus_xt * self.coordinate_mlp(torch.cat([h_cat_ht, h_e], dim=-1))).sum(dim=-2) + x
+            _x = (x_minus_xt * self.coordinate_mlp(h_cat_ht)).sum(dim=-2) + x
         else:
             _x = x
 
