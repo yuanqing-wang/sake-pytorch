@@ -35,13 +35,13 @@ class SAKELayer(torch.nn.Module):
         self.post_norm_nlp = torch.nn.Sequential(
             torch.nn.Linear(n_coefficients, hidden_features),
             activation,
-            torch.nn.Linear(hidden_features, hidden_features),
+            # torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.node_mlp = torch.nn.Sequential(
             torch.nn.Linear(2 * hidden_features + in_features, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, hidden_features),
+            # activation,
+            # torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.coordinate_mlp = torch.nn.Sequential(
@@ -58,7 +58,7 @@ class SAKELayer(torch.nn.Module):
         self.update_coordinate = update_coordinate
 
         self.inf = 1e10
-        self.epsilon = 1e-10
+        self.epsilon = 1e-5
 
 
 class SparseSAKELayer(SAKELayer):
