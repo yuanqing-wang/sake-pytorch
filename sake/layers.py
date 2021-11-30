@@ -222,7 +222,9 @@ class DenseSAKELayer(SAKELayer):
         ).unsqueeze(-1)
 
         # (n, n, 1)
-        spatial_att_weights = torch.nn.Softmin(dim=-2)(_x_minus_xt_norm)
+        spatial_att_weights = torch.nn.Softmin(dim=-2)(
+            _x_minus_xt_norm * self.log_gamma0.exp()
+        )
 
         # (n, n, 2*d)
         # h_cat_ht = torch.cat(
