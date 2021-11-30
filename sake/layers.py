@@ -19,6 +19,9 @@ class SAKELayer(torch.nn.Module):
         ):
         super().__init__()
 
+        self.log_gamma0 = torch.nn.Parameter(torch.tensor(0.0))
+        self.log_gamma1 = torch.nn.Parameter(torch.tensor(0.0))
+
         self.distance_filter = distance_filter
         self.n_coefficients = n_coefficients
         self.cutoff = cutoff
