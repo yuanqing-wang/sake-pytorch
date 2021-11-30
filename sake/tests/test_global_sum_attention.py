@@ -5,6 +5,8 @@ def test_import():
     import sake
     from sake.layers import GlobalSumSAKELayer
 
+
+@pytest.mark.skip()
 def test_global_sum_simple_graph_invariant():
     import torch
     import dgl
