@@ -48,8 +48,8 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.coordinate_mlp = torch.nn.Sequential(
-            torch.nn.Linear(hidden_features, hidden_features),
-            activation,
+            # torch.nn.Linear(hidden_features, hidden_features),
+            # activation,
             torch.nn.Linear(hidden_features, 1)
         )
 
