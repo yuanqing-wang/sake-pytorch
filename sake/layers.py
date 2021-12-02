@@ -211,7 +211,7 @@ class DenseSAKELayer(SAKELayer):
         ).unsqueeze(-1)
 
         if mask is not None:
-            _x_minus_xt_norm = _x_minus_xt_norm * (1.0-mask) * self.inf
+            _x_minus_xt_norm = _x_minus_xt_norm * (1.0-mask.unsqueeze(-1)) * self.inf
 
         # (n, n, 1)
         spatial_att_weights = torch.nn.Softmin(dim=-2)(_x_minus_xt_norm)
@@ -252,7 +252,7 @@ class DenseSAKELayer(SAKELayer):
 
 
         if mask is not None:
-            x_minus_xt_att = x_minus_xt_att * mask
+            x_minus_xt_att = x_minus_xt_att * mask.unsqueeze(-1).unsqueeze(-1)
 
         # (n, d, 3)
         x_minus_xt_att_sum = x_minus_xt_att.sum(dim=-3)
