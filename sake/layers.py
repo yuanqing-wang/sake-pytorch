@@ -19,7 +19,8 @@ class SAKELayer(torch.nn.Module):
         ):
         super().__init__()
 
-        self.log_gamma0 = torch.nn.Parameter(torch.tensor(0.0))
+        # self.log_gamma0 = torch.nn.Parameter(torch.tensor(0.0))
+        self.log_gamma0 = torch.tensor(0.0)
         self.log_gamma1 = torch.nn.Parameter(torch.tensor(0.0))
 
         self.distance_filter = distance_filter
@@ -50,7 +51,8 @@ class SAKELayer(torch.nn.Module):
         self.coordinate_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
             activation,
-            torch.nn.Linear(hidden_features, 1)
+            torch.nn.Linear(hidden_features, 1),
+            torch.nn.Tanh(),
         )
 
         self.semantic_attention_mlp = torch.nn.Sequential(
