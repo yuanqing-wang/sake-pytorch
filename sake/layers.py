@@ -11,24 +11,21 @@ class SAKELayer(torch.nn.Module):
             in_features: int,
             hidden_features: int,
             out_features: int,
+            edge_features: int=0,
             activation: Callable=torch.nn.SiLU(),
             update_coordinate: bool=True,
             distance_filter: Callable=ContinuousFilterConvolution,
             n_coefficients: int=64,
-            cutoff=None
+            cutoff=None,
         ):
         super().__init__()
-
-        # self.log_gamma0 = torch.nn.Parameter(torch.tensor(0.0))
-        self.log_gamma0 = torch.tensor(0.0)
-        self.log_gamma1 = torch.nn.Parameter(torch.tensor(0.0))
 
         self.distance_filter = distance_filter
         self.n_coefficients = n_coefficients
         self.cutoff = cutoff
 
         self.edge_weight_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2 * in_features + hidden_features, n_coefficients),
+            torch.nn.Linear(2 * in_features + hidden_features + edge_features, n_coefficients),
             torch.nn.Tanh(),
         )
 
@@ -43,7 +40,7 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2 * hidden_features + in_features, hidden_features),
+            torch.nn.Linear(2 * hidden_features + in_features + edge_features, hidden_features),
             # activation,
             # torch.nn.Linear(hidden_features, hidden_features),
         )
@@ -56,7 +53,7 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.semantic_attention_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2*in_features, 1, bias=False),
+            torch.nn.Linear(2*in_features + edge_features, 1, bias=False),
             activation,
         )
 
@@ -84,7 +81,7 @@ class SparseSAKELayer(SAKELayer):
         )
 
         g.apply_edges(
-            lambda edges: {"-x_minus_xt_norm": -edges.data['x_minus_xt_norm'] * self.log_gamma0.exp()},
+            lambda edges: {"-x_minus_xt_norm": -edges.data['x_minus_xt_norm']},
         )
 
         g.apply_edges(
@@ -140,11 +137,7 @@ class SparseSAKELayer(SAKELayer):
                 "x_minus_xt_att":
                 edges.data["higher_order_weights"].unsqueeze(-1)\
                 * (
-                    torch.exp(
-                        -self.log_gamma1.exp()\
-                        * edges.data["x_minus_xt_norm"]
-                    )\
-                    * edges.data["x_minus_xt_norm"].pow(-2)\
+                    edges.data["x_minus_xt_norm"].pow(-2)\
                     * edges.data["x_minus_xt"]
                 ).unsqueeze(-2)
             }
@@ -202,7 +195,7 @@ class DenseSAKELayer(SAKELayer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def forward(self, h, x):
+    def forward(self, h, x, mask=None):
         # x.shape = (n, 3)
         # h.shape = (n, d)
 
@@ -217,10 +210,11 @@ class DenseSAKELayer(SAKELayer):
             device=x_minus_xt_norm.device,
         ).unsqueeze(-1)
 
+        if mask is not None:
+            _x_minus_xt_norm = _x_minus_xt_norm * (1.0-mask) * self.inf
+
         # (n, n, 1)
-        spatial_att_weights = torch.nn.Softmin(dim=-2)(
-            _x_minus_xt_norm * self.log_gamma0.exp()
-        )
+        spatial_att_weights = torch.nn.Softmin(dim=-2)(_x_minus_xt_norm)
 
         # (n, n, 2*d)
         # h_cat_ht = torch.cat(
@@ -256,6 +250,10 @@ class DenseSAKELayer(SAKELayer):
         # (n, n, d, 3)
         x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + self.epsilon)).unsqueeze(-2))
 
+
+        if mask is not None:
+            x_minus_xt_att = x_minus_xt_att * mask
+
         # (n, d, 3)
         x_minus_xt_att_sum = x_minus_xt_att.sum(dim=-3)
 
@@ -269,6 +267,9 @@ class DenseSAKELayer(SAKELayer):
         if self.cutoff is not None:
             cutoff = self.cutoff(x_minus_xt_norm)
             h_e = h_e * cutoff
+
+        if mask is not None:
+            h_e = h_e * mask
 
         if self.update_coordinate is True:
             # (n, 3)
