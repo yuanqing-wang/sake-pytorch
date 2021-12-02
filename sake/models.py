@@ -41,11 +41,11 @@ class DenseSAKEModel(torch.nn.Module):
                 )
             )
 
-    def forward(self, h, x):
+    def forward(self, h, x, *args, **kwargs):
         h = self.embedding_in(h)
         for idx, eq_layer in enumerate(self.eq_layers):
             h_ = h
-            h, x = eq_layer(h, x)
+            h, x = eq_layer(h, x, *args, **kwargs)
             h = self.activation(h)
             h = h + h_
 
