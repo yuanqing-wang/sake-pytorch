@@ -269,7 +269,7 @@ class DenseSAKELayer(SAKELayer):
             h_e = h_e * cutoff
 
         if mask is not None:
-            h_e = h_e * mask
+            h_e = h_e * mask.unsqueeze(-1)
 
         if self.update_coordinate is True:
             # (n, 3)
