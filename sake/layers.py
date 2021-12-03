@@ -49,7 +49,7 @@ class SAKELayer(torch.nn.Module):
             torch.nn.Linear(hidden_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, 1),
-            torch.nn.Tanh(),
+            # torch.nn.Tanh(),
         )
 
         self.semantic_attention_mlp = torch.nn.Sequential(
