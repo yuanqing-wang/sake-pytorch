@@ -211,7 +211,7 @@ class DenseSAKELayer(SAKELayer):
         ).unsqueeze(-1)
 
         if mask is not None:
-            _x_minus_xt_norm = _x_minus_xt_norm * (1.0-mask.unsqueeze(-1)) * self.inf
+            _x_minus_xt_norm = _x_minus_xt_norm + (1.0-mask.unsqueeze(-1)) * self.inf
 
         # (n, n, 1)
         spatial_att_weights = torch.nn.Softmin(dim=-2)(_x_minus_xt_norm)
@@ -234,13 +234,13 @@ class DenseSAKELayer(SAKELayer):
             dim=-1
         )
 
-        if self.distance_filter is not None:
-            x_minus_xt_filtered = self.distance_filter(h_cat_ht, x_minus_xt_norm)
-        else:
-            x_minus_xt_filtered = (x_minus_xt_norm + 0.1).pow(-1)
+        x_minus_xt_filtered = self.distance_filter(h_cat_ht, x_minus_xt_norm)
 
         # (n, n, 1)
-        semantic_att_weights = self.semantic_attention_mlp(h_cat_ht).softmax(dim=-2)
+        semantic_att_weights = self.semantic_attention_mlp(h_cat_ht)
+        if mask is not None:
+            semantic_att_weights = semantic_att_weights + (mask.unsqueeze(-1) - 1.0) * self.inf
+        semantic_att_weights = semantic_att_weights.softmax(dim=-2)
 
         # (n, n, d)
         x_minus_xt_weight = self.edge_weight_mlp(
@@ -273,12 +273,18 @@ class DenseSAKELayer(SAKELayer):
 
         if self.update_coordinate is True:
             # (n, 3)
-            _x = (x_minus_xt * self.coordinate_mlp(h_e)).sum(dim=-2) + x
+            _h_e = self.coordinate_mlp(h_e)
+            if mask is not None:
+                _h_e = _h_e * mask.unsqueeze(-1)
+            _x = (x_minus_xt * _h_e).sum(dim=-2) + x
         else:
             _x = x
 
         # (n, d)
-        total_attention_weights = (semantic_att_weights * spatial_att_weights).softmax(dim=-2)
+        total_attention_weights = (semantic_att_weights * spatial_att_weights)
+        if mask is not None:
+            total_attention_weights = total_attention_weights + (mask.unsqueeze(-1) - 1.0) * self.inf
+        total_attention_weights = total_attention_weights.softmax(dim=-2)
         h_e_agg = (total_attention_weights * h_e).sum(dim=-2)
 
         # _h = self.node_mlp(h_e_agg + x_minus_xt_att_norm_embedding)
