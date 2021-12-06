@@ -228,7 +228,7 @@ class DenseSAKELayer(SAKELayer):
 
         # (n, n, 1)
         semantic_att_weights = self.semantic_attention_mlp(h_cat_ht)
-        semantic_att_weights = semantic_att_weights - self.int * torch.eye(
+        semantic_att_weights = semantic_att_weights - self.inf * torch.eye(
             semantic_att_weights.shape[-2],
             semantic_att_weights.shape[-2],
             device=semantic_att_weights.device,
