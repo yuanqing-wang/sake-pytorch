@@ -36,13 +36,13 @@ class SAKELayer(torch.nn.Module):
         self.post_norm_nlp = torch.nn.Sequential(
             torch.nn.Linear(n_coefficients, hidden_features),
             activation,
-            # torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.node_mlp = torch.nn.Sequential(
             torch.nn.Linear(2 * hidden_features + in_features + edge_features, hidden_features),
-            # activation,
-            # torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.coordinate_mlp = torch.nn.Sequential(
@@ -227,6 +227,11 @@ class DenseSAKELayer(SAKELayer):
 
         # (n, n, 1)
         semantic_att_weights = self.semantic_attention_mlp(h_cat_ht)
+        semantic_att_weights = semantic_att_weights - self.inf * torch.eye(
+            semantic_att_weights.shape[-2],
+            semantic_att_weights.shape[-2],
+            device=semantic_att_weights.device,
+        ).unsqueeze(-1)
         if mask is not None:
             semantic_att_weights = semantic_att_weights + (mask.unsqueeze(-1) - 1.0) * self.inf
         semantic_att_weights = semantic_att_weights.softmax(dim=-2)
