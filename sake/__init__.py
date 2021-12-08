@@ -1,4 +1,4 @@
 from . import layers, models, utils
 from .layers import GlobalSumSAKELayer, DenseSAKELayer, SparseSAKELayer
 from .utils import RBF, HardCutOff, Coloring, ConditionalColoring, ContinuousFilterConvolution, bootstrap, ConcatenationFilter
-from .models import DenseSAKEModel, SparseSAKEModel
+from .models import DenseSAKEModel, SparseSAKEModel, TandemDenseSAKEModel
