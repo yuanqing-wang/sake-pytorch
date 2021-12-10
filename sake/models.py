@@ -105,7 +105,7 @@ class TandemDenseSAKEModel(torch.nn.Module):
             else:
                 h_in, _ = eq_layer(h, x0, *args, **kwargs)
                 h_in = self.activation(h_in)
-            h = h_in + h_eq
+            h = h_in + h_eq + h
 
         h = self.embedding_out(h)
         if self.sum_readout is not None:
