@@ -2,6 +2,7 @@ import torch
 import dgl
 from typing import Union, Callable
 from .layers import DenseSAKELayer, SparseSAKELayer
+from .utils import ContinuousFilterConvolution, ConcatenationFilter
 
 class DenseSAKEModel(torch.nn.Module):
     def __init__(
@@ -30,6 +31,18 @@ class DenseSAKEModel(torch.nn.Module):
         self.sum_readout = sum_readout
         self.batch_norm = batch_norm
         self.eq_layers = torch.nn.ModuleList()
+        self.in_layers = torch.nn.ModuleList()
+
+        for idx in range(0, depth):
+            self.in_layers.append(
+                DenseSAKELayer(
+                    in_features=hidden_features,
+                    hidden_features=hidden_features,
+                    out_features=hidden_features,
+                    distance_filter=ContinuousFilterConvolution,
+                    *args, **kwargs,
+                )
+            )
 
         for idx in range(0, depth):
             self.eq_layers.append(
@@ -37,13 +50,16 @@ class DenseSAKEModel(torch.nn.Module):
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
+                    distance_filter=ConcatenationFilter,
                     *args, **kwargs,
                 )
             )
 
     def forward(self, h, x, *args, **kwargs):
         h = self.embedding_in(h)
-        for idx, eq_layer in enumerate(self.eq_layers):
+        for idx in range(self.length):
+            eq_layer = self.eq_layers[idx]
+            in_layer = self.in_layers[idx]
             h_ = h
             h, x = eq_layer(h, x, *args, **kwargs)
             h = self.activation(h)
