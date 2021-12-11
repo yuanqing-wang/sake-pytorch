@@ -31,18 +31,7 @@ class DenseSAKEModel(torch.nn.Module):
         self.sum_readout = sum_readout
         self.batch_norm = batch_norm
         self.eq_layers = torch.nn.ModuleList()
-        self.in_layers = torch.nn.ModuleList()
 
-        for idx in range(0, depth):
-            self.in_layers.append(
-                DenseSAKELayer(
-                    in_features=hidden_features,
-                    hidden_features=hidden_features,
-                    out_features=hidden_features,
-                    distance_filter=ContinuousFilterConvolution,
-                    *args, **kwargs,
-                )
-            )
 
         for idx in range(0, depth):
             self.eq_layers.append(
@@ -50,16 +39,13 @@ class DenseSAKEModel(torch.nn.Module):
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
-                    distance_filter=ConcatenationFilter,
                     *args, **kwargs,
                 )
             )
 
     def forward(self, h, x, *args, **kwargs):
         h = self.embedding_in(h)
-        for idx in range(self.length):
-            eq_layer = self.eq_layers[idx]
-            in_layer = self.in_layers[idx]
+        for idx, eq_layer in enumerate(self.eq_layers):
             h_ = h
             h, x = eq_layer(h, x, *args, **kwargs)
             h = self.activation(h)
@@ -101,11 +87,23 @@ class TandemDenseSAKEModel(torch.nn.Module):
         self.eq_layers = torch.nn.ModuleList()
 
         for idx in range(0, depth):
+            self.in_layers.append(
+                DenseSAKELayer(
+                    in_features=hidden_features,
+                    hidden_features=hidden_features,
+                    out_features=hidden_features,
+                    distance_filter=ContinuousFilterConvolution,
+                    *args, **kwargs,
+                )
+            )
+
+        for idx in range(0, depth):
             self.eq_layers.append(
                 DenseSAKELayer(
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
+                    distance_filter=ConcatenationFilter,
                     *args, **kwargs,
                 )
             )
@@ -113,14 +111,14 @@ class TandemDenseSAKEModel(torch.nn.Module):
     def forward(self, h, x, *args, **kwargs):
         h = self.embedding_in(h)
         x0 = x
-        for idx, eq_layer in enumerate(self.eq_layers):
+        for idx in range(self.depth):
+            eq_layer = self.eq_layers[idx]
+            in_layer = self.in_layers[idx]
             h_eq, x = eq_layer(h, x, *args, **kwargs)
             h_eq = self.activation(h_eq)
-            if idx == 0:
-                h_in = h_eq
-            else:
-                h_in, _ = eq_layer(h, x0, *args, **kwargs)
-                h_in = self.activation(h_in)
+            
+            h_in, _ = in_layer(h, x0, *args, **kwargs)
+            h_in = self.activation(h_in)
             h = h_in + h_eq + h
 
         h = self.embedding_out(h)
