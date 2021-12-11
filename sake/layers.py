@@ -51,7 +51,6 @@ class SAKELayer(torch.nn.Module):
             torch.nn.Linear(hidden_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, 1),
-            # torch.nn.Tanh(),
         )
 
         self.semantic_attention_mlp = torch.nn.Sequential(
@@ -275,7 +274,9 @@ class DenseSAKELayer(SAKELayer):
             _h_e = self.coordinate_mlp(torch.cat([h_e, h_cat_ht], dim=-1))
             if mask is not None:
                 _h_e = _h_e * mask.unsqueeze(-1)
+            
             _x = (x_minus_xt * _h_e).sum(dim=-2) + x
+
         else:
             _x = x
 
