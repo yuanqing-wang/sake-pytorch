@@ -85,6 +85,7 @@ class TandemDenseSAKEModel(torch.nn.Module):
         self.sum_readout = sum_readout
         self.batch_norm = batch_norm
         self.eq_layers = torch.nn.ModuleList()
+        self.in_layers = torch.nn.ModuleList()
 
         for idx in range(0, depth):
             self.in_layers.append(

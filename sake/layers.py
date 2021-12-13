@@ -46,10 +46,10 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.coordinate_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2 * in_features + hidden_features, hidden_features),
-            activation,
             torch.nn.Linear(hidden_features, hidden_features),
             activation,
+            # torch.nn.Linear(hidden_features, hidden_features),
+            # activation,
             torch.nn.Linear(hidden_features, 1),
         )
 
@@ -271,7 +271,7 @@ class DenseSAKELayer(SAKELayer):
 
         if self.update_coordinate is True:
             # (n, 3)
-            _h_e = self.coordinate_mlp(torch.cat([h_e, h_cat_ht], dim=-1))
+            _h_e = self.coordinate_mlp(h_e)
             if mask is not None:
                 _h_e = _h_e * mask.unsqueeze(-1)
             
