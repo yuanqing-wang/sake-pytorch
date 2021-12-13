@@ -1,6 +1,6 @@
 import torch
 import dgl
-from typing import Union, Callable
+from typing import Union, Callable, List
 from .layers import DenseSAKELayer, SparseSAKELayer
 from .utils import ContinuousFilterConvolution, ConcatenationFilter
 
@@ -14,6 +14,7 @@ class DenseSAKEModel(torch.nn.Module):
         activation: Callable=torch.nn.SiLU(),
         sum_readout: Union[None, Callable]=None,
         batch_norm: bool=False,
+        update_coordinate: Union[List, bool]=False,
         *args, **kwargs,
     ):
         super(DenseSAKEModel, self).__init__()
@@ -32,6 +33,8 @@ class DenseSAKEModel(torch.nn.Module):
         self.batch_norm = batch_norm
         self.eq_layers = torch.nn.ModuleList()
 
+        if isinstance(update_coordinate, bool):
+            update_coordinate = [update_coordinate for _ in range(depth)]
 
         for idx in range(0, depth):
             self.eq_layers.append(
@@ -39,6 +42,7 @@ class DenseSAKEModel(torch.nn.Module):
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
+                    update_coordinate=update_coordinate[idx],
                     *args, **kwargs,
                 )
             )
@@ -117,7 +121,7 @@ class TandemDenseSAKEModel(torch.nn.Module):
             in_layer = self.in_layers[idx]
             h_eq, x = eq_layer(h, x, *args, **kwargs)
             h_eq = self.activation(h_eq)
-            
+
             h_in, _ = in_layer(h, x0, *args, **kwargs)
             h_in = self.activation(h_in)
             h = h_in + h_eq + h
