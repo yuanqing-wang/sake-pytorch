@@ -25,8 +25,9 @@ class SAKELayer(torch.nn.Module):
         self.cutoff = cutoff
 
         self.edge_weight_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2 * in_features + hidden_features + edge_features, n_coefficients),
-            torch.nn.Tanh(),
+            torch.nn.Linear(2 * in_features + hidden_features + edge_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, n_coefficients),
         )
 
         self.distance_filter = self.distance_filter(
@@ -247,7 +248,6 @@ class DenseSAKELayer(SAKELayer):
 
         # (n, n, d, 3)
         x_minus_xt_att = x_minus_xt_weight.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + self.epsilon)).unsqueeze(-2))
-
 
         if mask is not None:
             x_minus_xt_att = x_minus_xt_att * mask.unsqueeze(-1).unsqueeze(-1)

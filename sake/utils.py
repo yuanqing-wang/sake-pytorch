@@ -60,7 +60,7 @@ class RBF(torch.nn.Module):
     def __init__(
             self,
             gamma=10.0,
-            mu=torch.linspace(0, 5, 50),
+            mu=torch.linspace(0, 30, 300),
             ):
         super(RBF, self).__init__()
         self.register_buffer("gamma", torch.tensor(gamma))
