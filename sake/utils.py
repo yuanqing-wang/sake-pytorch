@@ -123,7 +123,8 @@ class ConcatenationFilter(torch.nn.Module):
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(in_features + 1, out_features),
             activation,
-            torch.nn.Linear(out_features, out_features)
+            torch.nn.Linear(out_features, out_features),
+            activation,
         )
 
     def forward(self, h, x):
