@@ -235,8 +235,8 @@ class DenseSAKELayer(SAKELayer):
             semantic_att_weights.shape[-2],
             device=semantic_att_weights.device,
         ).unsqueeze(-1)
-        
-        
+
+
         if mask is not None:
             semantic_att_weights = semantic_att_weights + (mask.unsqueeze(-1) - 1.0) * self.inf
         semantic_att_weights = semantic_att_weights.softmax(dim=-2)
@@ -274,7 +274,7 @@ class DenseSAKELayer(SAKELayer):
             _h_e = self.coordinate_mlp(h_e)
             if mask is not None:
                 _h_e = _h_e * mask.unsqueeze(-1)
-            
+
             _x = (x_minus_xt * _h_e).sum(dim=-2) + x
 
         else:
@@ -300,6 +300,8 @@ class DenseSAKELayer(SAKELayer):
                   dim=-1
               )
         )
+
+        _h = _h + h
 
         return _h, _x
 

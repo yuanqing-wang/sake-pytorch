@@ -11,6 +11,7 @@ class DenseSAKEModel(torch.nn.Module):
         hidden_features: int,
         out_features: int,
         depth: int=4,
+        layer: torch.nn.Module=DenseSAKELayer,
         activation: Callable=torch.nn.SiLU(),
         sum_readout: Union[None, Callable]=None,
         batch_norm: bool=False,
@@ -22,11 +23,7 @@ class DenseSAKEModel(torch.nn.Module):
         self.hidden_features = hidden_features
         self.out_features = out_features
         self.embedding_in = torch.nn.Linear(in_features, hidden_features)
-        self.embedding_out = torch.nn.Sequential(
-                torch.nn.Linear(hidden_features, hidden_features),
-                activation,
-                torch.nn.Linear(hidden_features, out_features),
-        )
+        self.embedding_out = torch.nn.Linear(hidden_features, out_features)
         self.activation = activation
         self.depth = depth
         self.sum_readout = sum_readout
@@ -38,7 +35,7 @@ class DenseSAKEModel(torch.nn.Module):
 
         for idx in range(0, depth):
             self.eq_layers.append(
-                DenseSAKELayer(
+                layer(
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
@@ -50,15 +47,8 @@ class DenseSAKEModel(torch.nn.Module):
     def forward(self, h, x, *args, **kwargs):
         h = self.embedding_in(h)
         for idx, eq_layer in enumerate(self.eq_layers):
-            h_ = h
             h, x = eq_layer(h, x, *args, **kwargs)
-            h = self.activation(h)
-            h = h + h_
-
         h = self.embedding_out(h)
-        if self.sum_readout is not None:
-            h = h.sum(dim=-2)
-            h = self.sum_readout(h)
 
         return h, x
 
