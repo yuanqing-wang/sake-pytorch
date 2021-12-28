@@ -57,7 +57,8 @@ def run(args):
     coloring = sake.Coloring(mu, sigma)
 
     from torch.utils.data import DataLoader
-    ds_tr_loader = DataLoader(ds_tr, batch_size=96, collate_fn=padding)
+    ds_tr_loader = DataLoader(ds_tr, batch_size=96, collate_fn=padding, pin_memory=True)
+    ds_vl_loader = DataLoader(ds_vl, batch_size=96, collate_fn=padding, pin_memory=True)
 
     from sake.baselines.egnn import EGNNLayer
     model = sake.DenseSAKEModel(
@@ -99,6 +100,31 @@ def run(args):
             loss.backward()
             optimizer.step()
         scheduler.step()
+        
+        with torch.no_grad():
+            model.eval()
+            ys = []
+            ys_hat = []
+
+            for z, r, y, mask in ds_vl_loader:
+                z = z.cuda().float()
+                r = r.cuda()
+                y = y.cuda()
+                mask = mask.cuda().float()
+
+                y_hat, _ = model(z, r, mask=mask)
+                y_hat = readout(y_hat, mask=mask)
+                y_hat = coloring(y_hat)
+
+                ys.append(y)
+                ys_hat.append(y_hat)
+
+            ys = torch.cat(ys, dim=0)
+            ys_hat = torch.cat(ys_hat, dim=0)
+            loss = torch.nn.L1Loss()(ys, ys_hat)
+            print(loss, flush=True)
+                
+
 
 if __name__ == "__main__":
     import argparse
