@@ -13,7 +13,6 @@ class DenseSAKEModel(torch.nn.Module):
         depth: int=4,
         layer: torch.nn.Module=DenseSAKELayer,
         activation: Callable=torch.nn.SiLU(),
-        sum_readout: Union[None, Callable]=None,
         batch_norm: bool=False,
         update_coordinate: Union[List, bool]=False,
         *args, **kwargs,
@@ -26,7 +25,6 @@ class DenseSAKEModel(torch.nn.Module):
         self.embedding_out = torch.nn.Linear(hidden_features, out_features)
         self.activation = activation
         self.depth = depth
-        self.sum_readout = sum_readout
         self.batch_norm = batch_norm
         self.eq_layers = torch.nn.ModuleList()
 

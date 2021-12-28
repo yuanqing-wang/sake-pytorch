@@ -66,8 +66,10 @@ class EGNNLayer(torch.nn.Module):
         ).unsqueeze(-1)
         return h_e_mtx
 
-    def aggregate(self, h_e_mtx):
+    def aggregate(self, h_e_mtx, mask=None):
         h_e_mtx = self.mask_self(h_e_mtx)
+        if mask is not None:
+            h_e_mtx = h_e_mtx * mask.unsqueeze(-1)
         h_e = h_e_mtx.sum(dim=-2)
         return h_e
 
@@ -85,12 +87,12 @@ class EGNNLayer(torch.nn.Module):
         x = x + agg
         return x
 
-    def forward(self, h, x):
+    def forward(self, h, x, mask=None):
         x_minus_xt = get_x_minus_xt(x)
         x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
         h_cat_ht = get_h_cat_h(h)
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
-        h_e = self.aggregate(h_e_mtx)
+        h_e = self.aggregate(h_e_mtx, mask=mask)
         if self.update_coordinate:
             x = self.coordinate_model(x, x_minus_xt, h_e_mtx)
         h = self.node_model(h, h_e)
