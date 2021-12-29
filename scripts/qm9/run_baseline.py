@@ -56,6 +56,8 @@ def run(args):
         node_attr=0,
     )
 
+    print(model)
+
     if torch.cuda.is_available():
         model = model.cuda()
 
