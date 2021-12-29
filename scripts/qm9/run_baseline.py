@@ -6,6 +6,7 @@ from typing import Callable
 
 from qm9 import dataset
 from qm9 import utils as qm9_utils
+from qm9.models import EGNN
 
 class Readout(torch.nn.Module):
     def __init__(
@@ -41,27 +42,26 @@ def run(args):
     dataloaders, charge_scale = dataset.retrieve_dataloaders(args.batch_size, 4)
     # compute mean and mean absolute deviation
     mu, sigma = qm9_utils.compute_mean_mad(dataloaders, args.property)
+    print(mu, sigma)
     coloring = sake.Coloring(mu, sigma)
 
-    from sake.baselines.egnn import EGNNLayer
-    model = sake.DenseSAKEModel(
-        in_features=15,
-        hidden_features=128,
-        out_features=128,
-        depth=7,
-        update_coordinate=False,
-        activation=torch.nn.SiLU(),
-        layer=EGNNLayer,
+    model = EGNN(
+        in_node_nf=15,
+        in_edge_nf=0,
+        hidden_nf=128,
+        device=device,
+        n_layers=7,
+        coords_weight=1.0,
+        attention=False,
+        node_attr=0,
     )
-    readout = Readout(in_features=128, hidden_features=128, out_features=1)
 
     if torch.cuda.is_available():
         model = model.cuda()
-        readout = readout.cuda()
 
     optimizer = torch.optim.Adam(
-        list(model.parameters()) + list(readout.parameters()),
-        args.lr
+        model.parameters(),
+        args.lr,
     )
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.n_epochs)
@@ -70,17 +70,29 @@ def run(args):
         scheduler.step()
         for data in dataloaders['train']:
             batch_size, n_nodes, _ = data['positions'].size()
-            atom_positions = data['positions'].view(batch_size, n_nodes, -1).to(device, dtype)
-            atom_mask = data['atom_mask'].view(batch_size, n_nodes, -1).to(device, dtype)
-            edge_mask = data['edge_mask'].to(device, dtype).view(batch_size, n_nodes, n_nodes)
+            atom_positions = data['positions'].view(batch_size * n_nodes, -1).to(device, dtype)
+            atom_mask = data['atom_mask'].view(batch_size * n_nodes, -1).to(device, dtype)
+            edge_mask = data['edge_mask'].to(device, dtype)
             one_hot = data['one_hot'].to(device, dtype)
             charges = data['charges'].to(device, dtype)
             nodes = qm9_utils.preprocess_input(one_hot, charges, args.charge_power, charge_scale, device)
+            nodes = nodes.view(batch_size * n_nodes, -1)
             edges = qm9_utils.get_adj_matrix(n_nodes, batch_size, device)
-            y_hat, _ = model(nodes, atom_positions, mask=edge_mask)
-            y_hat = readout(y_hat, atom_mask)
-            y = data[args.property].to(device, dtype).unsqueeze(-1)
+            
+
+            y = data[args.property].to(device, dtype)
+            y_hat = model(
+                h0=nodes,
+                x=atom_positions,
+                edges=edges,
+                edge_attr=None,
+                node_mask=atom_mask,
+                edge_mask=edge_mask,
+                n_nodes=n_nodes,
+            )
+            
             y = (y - mu) / sigma
+
             loss = torch.nn.L1Loss()(y_hat, y)
             loss.backward()
             print(loss)
