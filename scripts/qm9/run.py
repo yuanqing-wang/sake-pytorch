@@ -38,7 +38,7 @@ def run(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.float32
 
-    dataloaders, charge_scale = dataset.retrieve_dataloaders(args.batch_size, 4)
+    dataloaders, charge_scale = dataset.retrieve_dataloaders(args.batch_size, 0)
     # compute mean and mean absolute deviation
     mu, sigma = qm9_utils.compute_mean_mad(dataloaders, args.property)
     coloring = sake.Coloring(mu, sigma)
