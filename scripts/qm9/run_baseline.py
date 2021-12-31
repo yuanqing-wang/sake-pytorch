@@ -42,8 +42,8 @@ def run(args):
 
     for idx_epoch in range(args.n_epochs):
         scheduler.step()
-        optimizer.zero_grad()
         for data in dataloaders['train']:
+            optimizer.zero_grad()
             batch_size, n_nodes, _ = data['positions'].size()
             atom_positions = data['positions'].view(batch_size * n_nodes, -1).to(device, dtype)
             atom_mask = data['atom_mask'].view(batch_size * n_nodes, -1).to(device, dtype)
@@ -70,8 +70,44 @@ def run(args):
 
             loss = torch.nn.L1Loss()(y_hat, y)
             loss.backward()
-            print(loss)
             optimizer.step()
+
+        with torch.no_grad():
+            ys = []
+            ys_hat = []
+            for data in dataloaders['train']:
+                optimizer.zero_grad()
+                batch_size, n_nodes, _ = data['positions'].size()
+                atom_positions = data['positions'].view(batch_size * n_nodes, -1).to(device, dtype)
+                atom_mask = data['atom_mask'].view(batch_size * n_nodes, -1).to(device, dtype)
+                edge_mask = data['edge_mask'].to(device, dtype)
+                one_hot = data['one_hot'].to(device, dtype)
+                charges = data['charges'].to(device, dtype)
+                nodes = qm9_utils.preprocess_input(one_hot, charges, args.charge_power, charge_scale, device)
+                nodes = nodes.view(batch_size * n_nodes, -1)
+                edges = qm9_utils.get_adj_matrix(n_nodes, batch_size, device)
+
+
+                y = data[args.property].to(device, dtype)
+                y_hat = model(
+                    h0=nodes,
+                    x=atom_positions,
+                    edges=edges,
+                    edge_attr=None,
+                    node_mask=atom_mask,
+                    edge_mask=edge_mask,
+                    n_nodes=n_nodes,
+                )
+
+                y_hat = y_hat * sigma + mu
+
+                ys.append(y)
+                ys_hat.append(y_hat)
+
+            ys = torch.cat(ys, dim=0)
+            ys_hat = torch.cat(ys_hat, dim=0)
+            loss = torch.nn.L1Loss()(ys, ys_hat)
+            print(loss, flush=True)
 
 if __name__ == "__main__":
     import argparse
