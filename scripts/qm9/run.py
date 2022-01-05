@@ -116,7 +116,7 @@ def run(args):
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--property", type=str, default="U")
+    parser.add_argument("--property", type=str, default="homo")
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--n_epochs", type=int, default=1000)
     parser.add_argument("--charge_power", type=int, default=2)

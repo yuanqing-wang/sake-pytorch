@@ -12,7 +12,7 @@ def run(args):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     dtype = torch.float32
 
-    dataloaders, charge_scale = dataset.retrieve_dataloaders(args.batch_size, 4)
+    dataloaders, charge_scale = dataset.retrieve_dataloaders(args.batch_size, 0)
     # compute mean and mean absolute deviation
     mu, sigma = qm9_utils.compute_mean_mad(dataloaders, args.property)
     print(mu, sigma)
@@ -24,7 +24,7 @@ def run(args):
         device=device,
         n_layers=7,
         coords_weight=1.0,
-        attention=False,
+        attention=1,
         node_attr=0,
     )
 
@@ -36,13 +36,15 @@ def run(args):
     optimizer = torch.optim.Adam(
         model.parameters(),
         args.lr,
+        weight_decay=args.weight_decay,
     )
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.n_epochs)
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.n_epochs)
 
     for idx_epoch in range(args.n_epochs):
         scheduler.step()
-        for data in dataloaders['train']:
+        for idx_data, data in enumerate(dataloaders['train']):
+            model.train()
             optimizer.zero_grad()
             batch_size, n_nodes, _ = data['positions'].size()
             atom_positions = data['positions'].view(batch_size * n_nodes, -1).to(device, dtype)
@@ -66,17 +68,20 @@ def run(args):
                 n_nodes=n_nodes,
             )
 
-            y = (y - mu) / sigma
+            _y = (y - mu) / sigma
 
-            loss = torch.nn.L1Loss()(y_hat, y)
+            loss = torch.nn.L1Loss()(y_hat, _y)
             loss.backward()
+            if idx_data % 10 == 0:
+                print(loss)
+
             optimizer.step()
 
         with torch.no_grad():
+            model.eval()
             ys = []
             ys_hat = []
-            for data in dataloaders['train']:
-                optimizer.zero_grad()
+            for data in dataloaders['valid']:
                 batch_size, n_nodes, _ = data['positions'].size()
                 atom_positions = data['positions'].view(batch_size * n_nodes, -1).to(device, dtype)
                 atom_mask = data['atom_mask'].view(batch_size * n_nodes, -1).to(device, dtype)
@@ -107,13 +112,13 @@ def run(args):
             ys = torch.cat(ys, dim=0)
             ys_hat = torch.cat(ys_hat, dim=0)
             loss = torch.nn.L1Loss()(ys, ys_hat)
-            print(loss, flush=True)
-
+            print("total loss", loss, flush=True)
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--property", type=str, default="U")
+    parser.add_argument("--property", type=str, default="homo")
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--weight_decay", type=float, default=1e-14)
     parser.add_argument("--n_epochs", type=int, default=1000)
     parser.add_argument("--charge_power", type=int, default=2)
     parser.add_argument("--batch_size", type=int, default=96)
