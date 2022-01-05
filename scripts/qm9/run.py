@@ -77,7 +77,6 @@ def run(args):
             one_hot = data['one_hot'].to(device, dtype)
             charges = data['charges'].to(device, dtype)
             nodes = qm9_utils.preprocess_input(one_hot, charges, args.charge_power, charge_scale, device)
-            edges = qm9_utils.get_adj_matrix(n_nodes, batch_size, device)
             y_hat, _ = model(nodes, atom_positions, mask=edge_mask)
             y_hat = readout(y_hat, atom_mask)
             y = data[args.property].to(device, dtype).unsqueeze(-1)
@@ -98,12 +97,11 @@ def run(args):
                 one_hot = data['one_hot'].to(device, dtype)
                 charges = data['charges'].to(device, dtype)
                 nodes = qm9_utils.preprocess_input(one_hot, charges, args.charge_power, charge_scale, device)
-                edges = qm9_utils.get_adj_matrix(n_nodes, batch_size, device)
                 y_hat, _ = model(nodes, atom_positions, mask=edge_mask)
                 y_hat = readout(y_hat, atom_mask)
                 y = data[args.property].to(device, dtype).unsqueeze(-1)
                 y_hat = coloring(y_hat)
-                
+
                 ys.append(y)
                 ys_hat.append(y_hat)
 

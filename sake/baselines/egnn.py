@@ -17,6 +17,7 @@ class EGNNLayer(torch.nn.Module):
         residual: bool=False,
         activation: Union[None, Callable]=torch.nn.SiLU(),
         distance_filter: Callable=ConcatenationFilter,
+        attention: bool=True,
     ):
         super().__init__()
 
@@ -45,6 +46,12 @@ class EGNNLayer(torch.nn.Module):
 
             torch.nn.init.xavier_uniform_(self.coordinate_mlp[2].weight, gain=0.001)
 
+        self.attention = attention
+        if attention is True:
+            self.att_mlp = torch.nn.Sequential(
+                torch.nn.Linear(hidden_features, 1),
+                torch.nn.Sigmoid(),
+            )
 
     def edge_model(self, h_cat_ht, x_minus_xt_norm):
         h_e_mtx = torch.cat(
@@ -56,6 +63,10 @@ class EGNNLayer(torch.nn.Module):
         )
 
         h_e_mtx = self.edge_mlp(h_e_mtx)
+
+        if self.attention:
+            att = self.att_mlp(h_e_mtx)
+            h_e_mtx = att * h_e_mtx
         return h_e_mtx
 
     def mask_self(self, h_e_mtx):
