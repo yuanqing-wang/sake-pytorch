@@ -14,24 +14,24 @@ class EGNNLayer(torch.nn.Module):
         out_features: int,
         hidden_features: int,
         update_coordinate: bool=False,
-        residual: bool=False,
+        residual: bool=True,
         activation: Union[None, Callable]=torch.nn.SiLU(),
         distance_filter: Callable=ConcatenationFilter,
         attention: bool=True,
     ):
         super().__init__()
 
-        self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(hidden_features + in_features, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, out_features),
-        )
-
         self.edge_mlp = torch.nn.Sequential(
             torch.nn.Linear(2 * in_features + 1, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
             activation,
+        )
+
+        self.node_mlp = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features + in_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, out_features),
         )
 
         self.residual = residual
@@ -70,15 +70,15 @@ class EGNNLayer(torch.nn.Module):
         return h_e_mtx
 
     def mask_self(self, h_e_mtx):
-        h_e_mtx = h_e_mtx * torch.eye(
+        h_e_mtx = h_e_mtx * (1.0 - torch.eye(
             h_e_mtx.shape[-2],
             h_e_mtx.shape[-2],
             device=h_e_mtx.device,
-        ).unsqueeze(-1)
+        )).unsqueeze(-1)
         return h_e_mtx
 
     def aggregate(self, h_e_mtx, mask=None):
-        h_e_mtx = self.mask_self(h_e_mtx)
+        # h_e_mtx = self.mask_self(h_e_mtx)
         if mask is not None:
             h_e_mtx = h_e_mtx * mask.unsqueeze(-1)
         h_e = h_e_mtx.sum(dim=-2)
@@ -100,7 +100,7 @@ class EGNNLayer(torch.nn.Module):
 
     def forward(self, h, x, mask=None):
         x_minus_xt = get_x_minus_xt(x)
-        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
+        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt, epsilon=0.0).pow(2)
         h_cat_ht = get_h_cat_h(h)
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
         h_e = self.aggregate(h_e_mtx, mask=mask)
