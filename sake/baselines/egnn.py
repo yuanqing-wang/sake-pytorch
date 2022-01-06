@@ -93,8 +93,7 @@ class EGNNLayer(torch.nn.Module):
 
     def coordinate_model(self, x, x_minus_xt, h_e_mtx):
         translation = x_minus_xt * self.coordinate_mlp(h_e_mtx)
-        translation = self.mask_self(translation)
-        agg = translation.mean(dim=-1)
+        agg = translation.mean(dim=-2)
         x = x + agg
         return x
 

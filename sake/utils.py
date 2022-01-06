@@ -159,3 +159,11 @@ def bootstrap(metric, n_samples=100, ci=0.95):
         return original, low, high
 
     return _bootstraped
+
+def assert_almost_equal_tensor(x0, x1, *args, **kwargs):
+    import numpy.testing as npt
+    npt.assert_almost_equal(
+        x0.cpu().detach().numpy(),
+        x1.cpu().detach().numpy(),
+        *args, **kwargs,
+    )

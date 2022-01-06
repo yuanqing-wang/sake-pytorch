@@ -1,7 +1,7 @@
 import torch
 import dgl
 from typing import Union, Callable, List
-from .layers import DenseSAKELayer, SparseSAKELayer
+from .layers import DenseSAKELayer # , SparseSAKELayer
 from .utils import ContinuousFilterConvolution, ConcatenationFilter
 
 class DenseSAKEModel(torch.nn.Module):
