@@ -11,7 +11,7 @@ from .functional import (
 )
 
 class SAKELayer(torch.nn.Module):
-    epsilon = 1e-10
+    epsilon = 1e-5
     def __init__(
         self,
         in_features: int,
