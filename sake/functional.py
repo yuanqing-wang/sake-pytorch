@@ -7,16 +7,9 @@ def get_x_minus_xt(x):
     return x.unsqueeze(-3) - x.unsqueeze(-2)
 
 def get_x_minus_xt_norm(
-    x=None,
-    x_minus_xt=None,
-    epsilon=EPSILON,
+    x_minus_xt,
+    epsilon: float=EPSILON,
 ):
-    assert x is None or x_minus_xt is None
-    assert x is not None or x_minus_xt is not None
-
-    if x_minus_xt is None:
-        x_minus_xt = get_x_minus_xt(x)
-
     x_minus_xt_norm = (
         x_minus_xt.pow(2).sum(dim=-1, keepdim=True).relu()
         + epsilon

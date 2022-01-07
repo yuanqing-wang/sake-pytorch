@@ -10,6 +10,10 @@ from .functional import (
     get_h_cat_h,
 )
 
+
+EPSILON = 1e-5
+INF = 1e5
+
 class SAKELayer(torch.nn.Module):
     epsilon = 1e-5
     inf = 1e5
@@ -38,14 +42,14 @@ class SAKELayer(torch.nn.Module):
         self.residual = residual
         self.update_coordinate = update_coordinate
 
-        if update_coordinate:
-            self.coordinate_mlp = torch.nn.Sequential(
-                torch.nn.Linear(hidden_features, hidden_features),
-                activation,
-                torch.nn.Linear(hidden_features, 1, bias=False),
-            )
+        # if update_coordinate:
+        self.coordinate_mlp = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, 1, bias=False),
+        )
 
-            torch.nn.init.xavier_uniform_(self.coordinate_mlp[2].weight, gain=0.001)
+        torch.nn.init.xavier_uniform_(self.coordinate_mlp[2].weight, gain=0.001)
 
         self.semantic_attention_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, 1),
@@ -67,12 +71,12 @@ class SAKELayer(torch.nn.Module):
         self.log_gamma = torch.nn.Parameter(torch.tensor(0.0))
 
 class DenseSAKELayer(SAKELayer):
-    def spatial_attention(self, h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=None):
+    def spatial_attention(self, h_e_mtx, x_minus_xt, x_minus_xt_norm, mask: Union[None, torch.Tensor]=None):
         # (batch_size, n, n, coefficients)
         coefficients = self.coefficients_mlp(h_e_mtx)
 
         # (batch_size, n, n, coefficients, 3)
-        combinations = coefficients.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + self.epsilon)).unsqueeze(-2))
+        combinations = coefficients.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + 1e-5)).unsqueeze(-2))
 
         if mask is not None:
             combinations = combinations * mask.unsqueeze(-1).unsqueeze(-1)
@@ -83,7 +87,7 @@ class DenseSAKELayer(SAKELayer):
         h_combinations = self.post_norm_mlp(combinations_norm)
         return h_combinations
 
-    def aggregate(self, h_e_mtx, mask=None):
+    def aggregate(self, h_e_mtx, mask: Union[None, torch.Tensor]=None):
         # h_e_mtx = self.mask_self(h_e_mtx)
         if mask is not None:
             h_e_mtx = h_e_mtx * mask.unsqueeze(-1)
@@ -105,23 +109,26 @@ class DenseSAKELayer(SAKELayer):
 
     def euclidean_attention(self, x_minus_xt_norm):
         # (batch_size, n, n, 1)
-        _x_minus_xt_norm = x_minus_xt_norm + self.inf * torch.eye(
+        _x_minus_xt_norm = x_minus_xt_norm + 1e5 * torch.eye(
             x_minus_xt_norm.shape[-2],
             x_minus_xt_norm.shape[-2],
             device=x_minus_xt_norm.device
         ).unsqueeze(-1)
 
-        att = torch.nn.Softmin(dim=-2)(_x_minus_xt_norm * self.log_gamma.exp())
+        att = torch.nn.functional.softmin(
+            _x_minus_xt_norm * self.log_gamma.exp(),
+            dim=-2,
+        )
         return att
 
     def semantic_attention(self, h_e_mtx):
         att = self.semantic_attention_mlp(h_e_mtx)
-        att = att - self.inf * torch.eye(
+        att = att - 1e5* torch.eye(
             att.shape[-2],
             att.shape[-2],
             device=att.device,
         ).unsqueeze(-1)
-        att = torch.nn.Softmax(dim=-2)(att)
+        att = torch.nn.functional.softmax(att, dim=-2)
         return att
 
     def combined_attention(self, x_minus_xt_norm, h_e_mtx):
@@ -130,9 +137,9 @@ class DenseSAKELayer(SAKELayer):
         combined_attention = (euclidean_attention * semantic_attention).softmax(dim=-2)
         return combined_attention
 
-    def forward(self, h, x, mask=None):
+    def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
         x_minus_xt = get_x_minus_xt(x)
-        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt, epsilon=self.epsilon)
+        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
         h_cat_ht = get_h_cat_h(h)
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
         h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
