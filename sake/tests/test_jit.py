@@ -11,7 +11,7 @@ def test_simple_forward(_equivariance_test_utils):
     h, x = layer(h0, x0)
 
 
-@pytest.skipif(torch.cuda.is_available() is False, reason="no cuda")
+@pytest.mark.skipif(torch.cuda.is_available() is False, reason="no cuda")
 def test_simple_forward(_equivariance_test_utils):
     import torch
     import sake
