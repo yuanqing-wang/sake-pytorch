@@ -104,7 +104,7 @@ class DenseSAKELayer(SAKELayer):
 
     def forward(self, h, x, mask=None):
         x_minus_xt = get_x_minus_xt(x)
-        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt, epsilon=1e-5).pow(2)
+        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt, epsilon=1e-5)# .pow(2)
         h_cat_ht = get_h_cat_h(h)
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
         h_e = self.aggregate(h_e_mtx, mask=mask)
