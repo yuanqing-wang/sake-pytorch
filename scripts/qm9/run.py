@@ -44,6 +44,7 @@ def run(args):
     coloring = sake.Coloring(mu, sigma)
 
     from sake.baselines.egnn import EGNNLayer
+    from sake.layers import DenseSAKELayer
     model = sake.DenseSAKEModel(
         in_features=15,
         hidden_features=128,
@@ -51,7 +52,9 @@ def run(args):
         depth=7,
         update_coordinate=False,
         activation=torch.nn.SiLU(),
-        layer=EGNNLayer,
+        # layer=EGNNLayer,
+        layer=DenseSAKELayer,
+        attention=True,
     )
     readout = Readout(in_features=128, hidden_features=128, out_features=1)
 
@@ -59,9 +62,13 @@ def run(args):
         model = model.cuda()
         readout = readout.cuda()
 
+    print(model)
+    print(readout)
+
     optimizer = torch.optim.Adam(
         list(model.parameters()) + list(readout.parameters()),
-        args.lr
+        args.lr,
+        weight_decay=args.weight_decay,
     )
 
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.n_epochs)
@@ -89,7 +96,6 @@ def run(args):
             ys = []
             ys_hat = []
             for data in dataloaders['valid']:
-                optimizer.zero_grad()
                 batch_size, n_nodes, _ = data['positions'].size()
                 atom_positions = data['positions'].view(batch_size, n_nodes, -1).to(device, dtype)
                 atom_mask = data['atom_mask'].view(batch_size, n_nodes, -1).to(device, dtype)
@@ -119,5 +125,6 @@ if __name__ == "__main__":
     parser.add_argument("--n_epochs", type=int, default=1000)
     parser.add_argument("--charge_power", type=int, default=2)
     parser.add_argument("--batch_size", type=int, default=96)
+    parser.add_argument("--weight_decay", type=float, default=1e-14)
     args = parser.parse_args()
     run(args)
