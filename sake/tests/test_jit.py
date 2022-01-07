@@ -42,3 +42,27 @@ def test_simple_model_forward_cuda(_equivariance_test_utils):
     model = model.cuda()
     model = torch.jit.script(model)
     h, x = model(h0, x0)
+
+def test_grad(_equivariance_test_utils):
+    import torch
+    import sake
+    h0, x0, _, __, ___ = _equivariance_test_utils
+    model = sake.DenseSAKEModel(7, 6, 5, residual=False)
+    model = torch.jit.script(model)
+    h, x = model(h0, x0)
+    h.sum().backward()
+
+def test_double_grad(_equivariance_test_utils):
+    import torch
+    import sake
+    h0, x0, _, __, ___ = _equivariance_test_utils
+    x0.requires_grad = True
+    model = sake.DenseSAKEModel(7, 6, 5, residual=False)
+    model = torch.jit.script(model)
+    h, x = model(h0, x0)
+    dh_dx0 = torch.autograd.grad(
+        h.sum(),
+        x0,
+        create_graph=True,
+    )[0]
+    dh_dx0.sum().backward()
