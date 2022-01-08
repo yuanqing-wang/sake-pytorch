@@ -86,6 +86,8 @@ class TandemDenseSAKEModel(torch.nn.Module):
                     hidden_features=hidden_features,
                     out_features=hidden_features,
                     distance_filter=ContinuousFilterConvolution,
+                    update_coordinate=False,
+                    residual=False,
                     *args, **kwargs,
                 )
             )
@@ -97,28 +99,23 @@ class TandemDenseSAKEModel(torch.nn.Module):
                     hidden_features=hidden_features,
                     out_features=hidden_features,
                     distance_filter=ConcatenationFilter,
+                    update_coordinate=True,
+                    residual=False,
                     *args, **kwargs,
                 )
             )
 
-    def forward(self, h, x, *args, **kwargs):
+    def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
         h = self.embedding_in(h)
         x0 = x
         for idx in range(self.depth):
             eq_layer = self.eq_layers[idx]
             in_layer = self.in_layers[idx]
-            h_eq, x = eq_layer(h, x, *args, **kwargs)
-            h_eq = self.activation(h_eq)
-
-            h_in, _ = in_layer(h, x0, *args, **kwargs)
-            h_in = self.activation(h_in)
+            h_eq, x = eq_layer(h, x, mask=mask)
+            h_in, _ = in_layer(h, x0, mask=mask)
             h = h_in + h_eq + h
 
         h = self.embedding_out(h)
-        if self.sum_readout is not None:
-            h = h.sum(dim=-2)
-            h = self.sum_readout(h)
-
         return h, x
 
 
