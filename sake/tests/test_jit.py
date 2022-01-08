@@ -43,6 +43,14 @@ def test_simple_model_forward_cuda(_equivariance_test_utils):
     model = torch.jit.script(model)
     h, x = model(h0, x0)
 
+def test_tandem_model_forward(_equivariance_test_utils):
+    import torch
+    import sake
+    h0, x0, _, __, ___ = _equivariance_test_utils
+    model = sake.TandemDenseSAKEModel(7, 7, 7)
+    model = torch.jit.script(model)
+    h, x = model(h0, x0)
+
 def test_grad(_equivariance_test_utils):
     import torch
     import sake

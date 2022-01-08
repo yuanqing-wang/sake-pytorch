@@ -108,9 +108,7 @@ class TandemDenseSAKEModel(torch.nn.Module):
     def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
         h = self.embedding_in(h)
         x0 = x
-        for idx in range(self.depth):
-            eq_layer = self.eq_layers[idx]
-            in_layer = self.in_layers[idx]
+        for eq_layer, in_layer in zip(self.eq_layers, self.in_layers):
             h_eq, x = eq_layer(h, x, mask=mask)
             h_in, _ = in_layer(h, x0, mask=mask)
             h = h_in + h_eq + h
