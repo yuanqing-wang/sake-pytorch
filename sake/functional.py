@@ -18,10 +18,11 @@ def get_x_minus_xt_norm(
     return x_minus_xt_norm
 
 def get_h_cat_h(h):
+    n_nodes = int(h.shape[-2])
     h_cat_ht = torch.cat(
         [
-            h.unsqueeze(-3).repeat_interleave(h.shape[-2], -3),
-            h.unsqueeze(-2).repeat_interleave(h.shape[-2], -2),
+            h.unsqueeze(-3).repeat_interleave(n_nodes, -3),
+            h.unsqueeze(-2).repeat_interleave(n_nodes, -2),
         ],
         dim=-1
     )
