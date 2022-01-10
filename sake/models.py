@@ -58,8 +58,8 @@ class TandemDenseSAKEModel(torch.nn.Module):
         out_features: int,
         depth: int=4,
         activation: Callable=torch.nn.SiLU(),
-        sum_readout: Union[None, Callable]=None,
-        batch_norm: bool=False,
+        distance_filter: Callable=ContinusouFilterConvolutionWithConcatenation,
+        share_parameters: bool=True,
         *args, **kwargs,
     ):
         super(TandemDenseSAKEModel, self).__init__()
@@ -74,9 +74,8 @@ class TandemDenseSAKEModel(torch.nn.Module):
         )
         self.activation = activation
         self.depth = depth
-        self.sum_readout = sum_readout
-        self.batch_norm = batch_norm
-        self.eq_layers = torch.nn.ModuleList()
+        self.share_parameters = share_parameters
+
         self.in_layers = torch.nn.ModuleList()
 
         for idx in range(0, depth):
@@ -85,25 +84,29 @@ class TandemDenseSAKEModel(torch.nn.Module):
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
-                    distance_filter=ContinuousFilterConvolution,
+                    distance_filter=distance_filter,
                     update_coordinate=False,
                     residual=False,
                     *args, **kwargs,
                 )
             )
 
-        for idx in range(0, depth):
-            self.eq_layers.append(
-                DenseSAKELayer(
-                    in_features=hidden_features,
-                    hidden_features=hidden_features,
-                    out_features=hidden_features,
-                    distance_filter=ConcatenationFilter,
-                    update_coordinate=True,
-                    residual=False,
-                    *args, **kwargs,
+        if share_parameters:
+            self.eq_layers = self.in_layers
+        else:
+            self.eq_layers = torch.nn.ModuleList()
+            for idx in range(0, depth):
+                self.eq_layers.append(
+                    DenseSAKELayer(
+                        in_features=hidden_features,
+                        hidden_features=hidden_features,
+                        out_features=hidden_features,
+                        distance_filter=distance_filter,
+                        update_coordinate=True,
+                        residual=False,
+                        *args, **kwargs,
+                    )
                 )
-            )
 
     def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
         h = self.embedding_in(h)
