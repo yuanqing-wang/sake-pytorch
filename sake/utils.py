@@ -133,6 +133,34 @@ class ConcatenationFilter(torch.nn.Module):
         )
         return h
 
+class Readout(torch.nn.Module):
+    def __init__(
+            self,
+            in_features:int=128,
+            hidden_features:int=128,
+            out_features:int=1,
+            activation: Callable=torch.nn.SiLU(),
+        ):
+        super().__init__()
+        self.before_sum = torch.nn.Sequential(
+            torch.nn.Linear(in_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+        self.after_sum = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, out_features),
+        )
+
+    def forward(self, h, mask=None):
+        h = self.before_sum(h)
+        h = h * mask # torch.sign(mask.sum(dim=-1, keepdim=True))
+        h = h.sum(dim=-2)
+        h = self.after_sum(h)
+        return h
+
+
 def bootstrap(metric, n_samples=100, ci=0.95):
     def _bootstraped(input, target, metric=metric, n_samples=n_samples, ci=ci):
         original = metric(input=input, target=target).item()
