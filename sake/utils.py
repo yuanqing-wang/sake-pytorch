@@ -107,7 +107,7 @@ class ContinuousFilterConvolutionWithConcatenation(torch.nn.Module):
 
     def forward(self, h, x):
         h = self.mlp_in(h)
-        x_ = self.kernel(x)
+        _x = self.kernel(x)
         h = self.mlp_out(torch.cat([h * _x, x], dim=-1)) # * (1.0 - torch.eye(x.shape[-2], x.shape[-2], device=x.device).unsqueeze(-1))
 
         return h

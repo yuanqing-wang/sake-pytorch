@@ -2,7 +2,7 @@ import torch
 import dgl
 from typing import Union, Callable, List
 from .layers import DenseSAKELayer # , SparseSAKELayer
-from .utils import ContinuousFilterConvolution, ConcatenationFilter
+from .utils import ContinuousFilterConvolution, ConcatenationFilter, ContinuousFilterConvolutionWithConcatenation
 
 class DenseSAKEModel(torch.nn.Module):
     def __init__(
@@ -58,7 +58,7 @@ class TandemDenseSAKEModel(torch.nn.Module):
         out_features: int,
         depth: int=4,
         activation: Callable=torch.nn.SiLU(),
-        distance_filter: Callable=ContinusouFilterConvolutionWithConcatenation,
+        distance_filter: Callable=ContinuousFilterConvolutionWithConcatenation,
         share_parameters: bool=True,
         *args, **kwargs,
     ):
