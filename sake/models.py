@@ -91,7 +91,7 @@ class TandemDenseSAKEModel(torch.nn.Module):
             )
 
         if share_parameters:
-            self.in_layers = self.eq_layers:
+            self.in_layers = self.eq_layers
         else:
             self.in_layers = torch.nn.ModuleList()
             for idx in range(0, depth):
