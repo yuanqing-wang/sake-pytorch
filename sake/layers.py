@@ -137,12 +137,12 @@ class DenseSAKELayer(SAKELayer):
         combined_attention = (euclidean_attention * semantic_attention).softmax(dim=-2)
         return combined_attention
 
-    def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
+    def forward(self, h, x, mask: Union[None, torch.Tensor]=None, update_coordinate: bool=True):
         x_minus_xt = get_x_minus_xt(x)
         x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
         h_cat_ht = get_h_cat_h(h)
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
-        if self.update_coordinate:
+        if self.update_coordinate and update_coordinate:
             x = self.coordinate_model(x, x_minus_xt, h_e_mtx)
         h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
         combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)

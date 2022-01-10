@@ -76,44 +76,44 @@ class TandemDenseSAKEModel(torch.nn.Module):
         self.depth = depth
         self.share_parameters = share_parameters
 
-        self.in_layers = torch.nn.ModuleList()
-
+        self.eq_layers = torch.nn.ModuleList()
         for idx in range(0, depth):
-            self.in_layers.append(
+            self.eq_layers.append(
                 DenseSAKELayer(
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
                     distance_filter=distance_filter,
-                    update_coordinate=False,
+                    update_coordinate=True,
                     residual=False,
                     *args, **kwargs,
                 )
             )
 
         if share_parameters:
-            self.eq_layers = self.in_layers
+            self.in_layers = self.eq_layers:
         else:
-            self.eq_layers = torch.nn.ModuleList()
+            self.in_layers = torch.nn.ModuleList()
             for idx in range(0, depth):
-                self.eq_layers.append(
+                self.in_layers.append(
                     DenseSAKELayer(
                         in_features=hidden_features,
                         hidden_features=hidden_features,
                         out_features=hidden_features,
                         distance_filter=distance_filter,
-                        update_coordinate=True,
+                        update_coordinate=False,
                         residual=False,
                         *args, **kwargs,
                     )
                 )
+
 
     def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
         h = self.embedding_in(h)
         x0 = x
         for eq_layer, in_layer in zip(self.eq_layers, self.in_layers):
             h_eq, x = eq_layer(h, x, mask=mask)
-            h_in, _ = in_layer(h, x0, mask=mask)
+            h_in, _ = in_layer(h, x0, mask=mask, update_coordinate=False)
             h = h_in + h_eq + h
 
         h = self.embedding_out(h)
