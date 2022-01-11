@@ -139,7 +139,7 @@ class DenseSAKELayer(SAKELayer):
 
     def forward(self, h, x, mask: Union[None, torch.Tensor]=None, update_coordinate: bool=True):
         x_minus_xt = get_x_minus_xt(x)
-        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
+        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt[:, :, :, :3])
         h_cat_ht = get_h_cat_h(h)
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
         if self.update_coordinate and update_coordinate:

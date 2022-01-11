@@ -51,7 +51,7 @@ class DenseSAKEModel(torch.nn.Module):
 
         return h, x
 
-class RecurrentDEnseSAKEModel(torch.nn.Module):
+class RecurrentDenseSAKEModel(torch.nn.Module):
     def __init__(
         self,
         in_features: int,
@@ -64,7 +64,7 @@ class RecurrentDEnseSAKEModel(torch.nn.Module):
         update_coordinate: Union[List, bool]=False,
         *args, **kwargs,
     ):
-        super(RecurrentDEnseSAKEModel, self).__init__()
+        super(RecurrentDenseSAKEModel, self).__init__()
         self.in_features = in_features
         self.hidden_features = hidden_features
         self.out_features = out_features
@@ -93,7 +93,7 @@ class RecurrentDEnseSAKEModel(torch.nn.Module):
         h = self.embedding_in(h)
         for idx, eq_layer in enumerate(self.eq_layers):
             h, _x = eq_layer(h, x, mask=mask)
-            x = torch.cat([x, _x], dim=-1) / math.sqrt(2)
+            x = torch.cat([x, _x], dim=-1) # / math.sqrt(2)
         h = self.embedding_out(h)
 
         return h, x
