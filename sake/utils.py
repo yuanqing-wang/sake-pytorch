@@ -112,6 +112,62 @@ class ContinuousFilterConvolutionWithConcatenation(torch.nn.Module):
 
         return h
 
+class ContinuousFilterConvolutionWithConcatenationRecurrent(torch.nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        activation: Callable=torch.nn.SiLU(),
+        kernel: Callable=RBF(),
+        seq_dimension=1,
+    ):
+        super(ContinuousFilterConvolutionWithConcatenationRecurrent, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.kernel = kernel
+        self.seq_dimension = seq_dimension
+        kernel_dimension = kernel.out_features
+        self.kernel_dimension = kernel_dimension
+        self.mlp_in = torch.nn.Linear(in_features, seq_dimension * kernel_dimension)
+        self.mlp_out = torch.nn.Sequential(
+            torch.nn.Linear(kernel_dimension * seq_dimension + seq_dimension, out_features),
+            activation,
+            torch.nn.Linear(out_features, out_features),
+            activation,
+        )
+
+    def forward(self, h, x):
+        # (batch_size, n, n, t * kernel_dimension)
+        h = self.mlp_in(h)
+
+        # (batch_size, t, n, n, kernel_dimension)
+        h = h.view(
+            *h.shape[:-3],
+            self.seq_dimension,
+            h.shape[-2],
+            h.shape[-2],
+            self.kernel_dimension
+        )
+
+        # (batch_size, t, n, n, kernel_dimension)
+        _x = self.kernel(x)
+        _x = h * x
+
+        # (batch_size, n, n, kernel_dimension * t)
+        _x = _x.view(
+            *_x.shape[:-4],
+            _x.shape[-2],
+            _x.shape[-2],
+            self.seq_dimension * self.kernel_dimension
+        )
+
+        # (batch_size, n, n, t)
+        x = x.movedim(-4, -1).flatten(-2, -1)
+
+        # (batch_size, n, n, d)
+        h = self.mlp_out(torch.cat([_x, x], dim=-1))
+        return h
+
 
 class ContinuousFilterConvolution(torch.nn.Module):
     def __init__(

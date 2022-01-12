@@ -3,7 +3,11 @@ import torch
 import dgl
 from typing import Callable, Union
 import itertools
-from .utils import PNA, Coloring, RBF, HardCutOff, ContinuousFilterConvolution, ConcatenationFilter
+from .utils import (
+    PNA, Coloring, RBF, HardCutOff,
+    ContinuousFilterConvolution, ConcatenationFilter,
+    ContinuousFilterConvolutionWithConcatenationRecurrent,
+)
 from .functional import (
     get_x_minus_xt,
     get_x_minus_xt_norm,
@@ -69,6 +73,7 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.log_gamma = torch.nn.Parameter(torch.tensor(0.0))
+        self.n_coefficients = n_coefficients
 
 class DenseSAKELayer(SAKELayer):
     def spatial_attention(self, h_e_mtx, x_minus_xt, x_minus_xt_norm, mask: Union[None, torch.Tensor]=None):
@@ -146,6 +151,133 @@ class DenseSAKELayer(SAKELayer):
             x = self.coordinate_model(x, x_minus_xt, h_e_mtx)
         h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
         combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
+        h_e_mtx = h_e_mtx * combined_attention
+        h_e = self.aggregate(h_e_mtx, mask=mask)
+        h = self.node_model(h, h_e, h_combinations)
+        return h, x
+
+class RecurrentDenseSAKELayer(DenseSAKELayer):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        hidden_features: int,
+        update_coordinate: bool=False,
+        residual: bool=True,
+        activation: Union[None, Callable]=torch.nn.SiLU(),
+        distance_filter: Callable=ContinuousFilterConvolutionWithConcatenationRecurrent,
+        attention: bool=True,
+        n_coefficients: int=32,
+        order: int=0,
+    ):
+        super().__init__(
+            in_features=in_features,
+            out_features=out_features,
+            hidden_features=hidden_features,
+            update_coordinate=update_coordinate,
+            residual=residual,
+            activation=activation,
+            distance_filter=distance_filter,
+            attention=attention,
+            n_coefficients=n_coefficients,
+        )
+
+        self.order = order
+        self.seq_dimension = 2 ** order
+
+        self.coordinate_mlp = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, self.seq_dimension),
+        )
+
+        self.post_norm_mlp = torch.nn.Sequential(
+            torch.nn.Linear(self.seq_dimension * n_coefficients, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+
+        self.coefficients_mlp = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, n_coefficients * self.seq_dimension),
+        )
+
+    def coordinate_model(self, x, x_minus_xt, h_e_mtx):
+        # x.shape = (batch_size, t, n, 3)
+        # x_minus_xt.shape = (batch_size, t, n, n, 3)
+
+        # (batch_size, n, n, t)
+        coefficients = self.coordinate_mlp(h_e_mtx)
+
+        # (batch_size, t, n, n, 1)
+        coefficients = coefficients.movedim(-1, -3).unsqueeze(-1)
+
+        # (batch_size, t, n, n, 3)
+        translation = coefficients * x_minus_xt
+
+        # (batch_size, t, n, 3)
+        agg = translation.mean(dim=-3)
+
+        # (batch_size, t, n, 3)
+        x = x + agg
+
+        return x
+
+    def spatial_attention(self, h_e_mtx, x_minus_xt, x_minus_xt_norm, mask: Union[None, torch.Tensor]=None):
+        # (batch_size, n, n, coefficients * t)
+        coefficients = self.coefficients_mlp(h_e_mtx)
+
+        # (batch_size, t, n, n, coefficients)
+        coefficients = coefficients.reshape(
+            *coefficients.shape[:-3],
+            self.seq_dimension,
+            coefficients.shape[-2],
+            coefficients.shape[-2],
+            self.n_coefficients,
+        )
+
+        # (batch_size, t, n, n, coefficients, 3)
+        combinations = coefficients.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + 1e-5)).unsqueeze(-2))
+
+        if mask is not None:
+            combinations = combinations * mask.unsqueeze(-3).unsqueeze(-1).unsqueeze(-1)
+
+        # (batch_size, t, n, coefficients, 3)
+        combinations_sum = combinations.sum(dim=-3)
+
+        # (batch_size, t, n, coefficients)
+        combinations_norm = combinations_sum.pow(2).sum(-1)
+
+        # (batch_size, n, coefficients * t)
+        h_combinations = combinations_norm.movedim(-3, -1).flatten(-2, -1)
+
+        # (batch_size, n, d)
+        h_combinations = self.post_norm_mlp(h_combinations)
+        return h_combinations
+
+    def forward(self, h, x, mask: Union[None, torch.Tensor]=None, update_coordinate: bool=True):
+        # (batch_size, t, n, n, 3)
+        x_minus_xt = get_x_minus_xt(x)
+
+        # (batch_size, t, n, n, 1)
+        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
+
+        # (batch_size, n, n, d)
+        h_cat_ht = get_h_cat_h(h)
+
+        # (batch_size, n, n, d)
+        h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
+
+        if self.update_coordinate and update_coordinate:
+            # (batch_size, t, n, 3)
+            x = self.coordinate_model(x, x_minus_xt, h_e_mtx)
+
+        # (batch_size, n, d)
+        h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
+
+        # (batch_size, n, n, 1)
+        combined_attention = self.combined_attention(x_minus_xt_norm[..., 0, 0], h_e_mtx)
         h_e_mtx = h_e_mtx * combined_attention
         h_e = self.aggregate(h_e_mtx, mask=mask)
         h = self.node_model(h, h_e, h_combinations)
