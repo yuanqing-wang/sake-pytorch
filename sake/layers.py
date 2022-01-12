@@ -146,7 +146,7 @@ class DenseSAKELayer(SAKELayer):
 
     def forward(self, h, x, mask: Union[None, torch.Tensor]=None, update_coordinate: bool=True):
         x_minus_xt = get_x_minus_xt(x)
-        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt[:, :, :, :3])
+        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
         h_cat_ht = get_h_cat_h(h)
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
         if self.update_coordinate and update_coordinate:
@@ -190,7 +190,7 @@ class RecurrentDenseSAKELayer(DenseSAKELayer):
         self.coordinate_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
             activation,
-            torch.nn.Linear(hidden_features, self.seq_dimension),
+            torch.nn.Linear(hidden_features, 1),
         )
 
         self.post_norm_mlp = torch.nn.Sequential(
@@ -205,19 +205,20 @@ class RecurrentDenseSAKELayer(DenseSAKELayer):
             torch.nn.Linear(hidden_features, n_coefficients * self.seq_dimension),
         )
 
+        self.translation_mixing = torch.nn.Parameter(
+            torch.eye(self.seq_dimension) + torch.distributions.Normal(0, 1).rsample((self.seq_dimension, self.seq_dimension)),
+        )
 
     def coordinate_model(self, x, x_minus_xt, h_e_mtx):
         # x.shape = (batch_size, t, n, 3)
         # x_minus_xt.shape = (batch_size, t, n, n, 3)
 
-        # (batch_size, n, n, t)
+        # (batch_size, n, n, 1)
         coefficients = self.coordinate_mlp(h_e_mtx)
 
-        # (batch_size, t, n, n, 1)
-        coefficients = coefficients.movedim(-1, -3).unsqueeze(-1)
-
         # (batch_size, t, n, n, 3)
-        translation = coefficients * x_minus_xt
+        translation = coefficients.unsqueeze(-4) * x_minus_xt
+        translation = (translation.swapaxes(-1, -4) @ self.translation_mixing).swapaxes(-1, -4)
 
         # (batch_size, t, n, 3)
         agg = translation.mean(dim=-3)
