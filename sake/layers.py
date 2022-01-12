@@ -57,7 +57,7 @@ class SAKELayer(torch.nn.Module):
 
         self.semantic_attention_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, 1),
-            torch.nn.LeakyReLU(),
+            torch.nn.LeakyReLU(0.2),
         )
 
         self.coefficients_mlp = torch.nn.Sequential(
