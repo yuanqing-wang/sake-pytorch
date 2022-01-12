@@ -57,7 +57,7 @@ class SAKELayer(torch.nn.Module):
         torch.nn.init.xavier_uniform_(self.coordinate_mlp[2].weight, gain=0.001)
 
         self.semantic_attention_mlp = torch.nn.Sequential(
-            torch.nn.Linear(hidden_features, 1),
+            torch.nn.Linear(hidden_features, n_heads),
             torch.nn.LeakyReLU(0.2),
         )
 
@@ -131,23 +131,23 @@ class DenseSAKELayer(SAKELayer):
         return att
 
     def semantic_attention(self, h_e_mtx):
-        # (batch_size, n, n, d)
+        # (batch_size, n, n, n_heads)
         att = self.semantic_attention_mlp(h_e_mtx)
 
-        # (batch_size, n, n, d, n_heads)
-        att = att.view(*att.shape[:-1], -1, self.n_heads)
+        # (batch_size, n, n, n_heads)
+        att = att.view(*att.shape[:-1], self.n_heads)
         att = att - 1e5* torch.eye(
-            att.shape[-3],
-            att.shape[-3],
+            att.shape[-2],
+            att.shape[-2],
             device=att.device,
-        ).unsqueeze(-1).unsqueeze(-1)
-        att = torch.nn.functional.softmax(att, dim=-3)
+        ).unsqueeze(-1)
+        att = torch.nn.functional.softmax(att, dim=-2)
         return att
 
     def combined_attention(self, x_minus_xt_norm, h_e_mtx):
         euclidean_attention = self.euclidean_attention(x_minus_xt_norm)
         semantic_attention = self.semantic_attention(h_e_mtx)
-        combined_attention = (euclidean_attention * semantic_attention).softmax(dim=-3)
+        combined_attention = (euclidean_attention * semantic_attention).softmax(dim=-2)
         return combined_attention
 
     def forward(self, h, x, mask: Union[None, torch.Tensor]=None, update_coordinate: bool=True):
@@ -159,7 +159,7 @@ class DenseSAKELayer(SAKELayer):
             x = self.coordinate_model(x, x_minus_xt, h_e_mtx)
         h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
         combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
-        h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention).flatten(-2, -1)
+        h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
         h_e = self.aggregate(h_e_mtx, mask=mask)
         h = self.node_model(h, h_e, h_combinations)
         return h, x
