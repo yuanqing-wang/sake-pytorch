@@ -32,13 +32,14 @@ class SAKELayer(torch.nn.Module):
         distance_filter: Callable=ConcatenationFilter,
         attention: bool=True,
         n_coefficients: int=32,
+        n_heads: int=4,
     ):
         super().__init__()
 
         self.edge_model = distance_filter(2*in_features, hidden_features)
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2*hidden_features + in_features, hidden_features),
+            torch.nn.Linear(n_heads * hidden_features + hidden_features + in_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, out_features),
         )
@@ -72,7 +73,8 @@ class SAKELayer(torch.nn.Module):
             torch.nn.Linear(hidden_features, hidden_features),
         )
 
-        self.log_gamma = torch.nn.Parameter(torch.tensor(0.0))
+        self.log_gamma = torch.nn.Parameter(torch.ones(n_heads))
+        self.n_heads = n_heads
         self.n_coefficients = n_coefficients
 
 class DenseSAKELayer(SAKELayer):
@@ -129,19 +131,23 @@ class DenseSAKELayer(SAKELayer):
         return att
 
     def semantic_attention(self, h_e_mtx):
+        # (batch_size, n, n, d)
         att = self.semantic_attention_mlp(h_e_mtx)
+
+        # (batch_size, n, n, d, n_heads)
+        att = att.view(*att.shape[:-1], -1, self.n_heads)
         att = att - 1e5* torch.eye(
-            att.shape[-2],
-            att.shape[-2],
+            att.shape[-3],
+            att.shape[-3],
             device=att.device,
-        ).unsqueeze(-1)
-        att = torch.nn.functional.softmax(att, dim=-2)
+        ).unsqueeze(-1).unsqueeze(-1)
+        att = torch.nn.functional.softmax(att, dim=-3)
         return att
 
     def combined_attention(self, x_minus_xt_norm, h_e_mtx):
         euclidean_attention = self.euclidean_attention(x_minus_xt_norm)
         semantic_attention = self.semantic_attention(h_e_mtx)
-        combined_attention = (euclidean_attention * semantic_attention).softmax(dim=-2)
+        combined_attention = (euclidean_attention * semantic_attention).softmax(dim=-3)
         return combined_attention
 
     def forward(self, h, x, mask: Union[None, torch.Tensor]=None, update_coordinate: bool=True):
@@ -153,7 +159,7 @@ class DenseSAKELayer(SAKELayer):
             x = self.coordinate_model(x, x_minus_xt, h_e_mtx)
         h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
         combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
-        h_e_mtx = h_e_mtx * combined_attention
+        h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention).flatten(-2, -1)
         h_e = self.aggregate(h_e_mtx, mask=mask)
         h = self.node_model(h, h_e, h_combinations)
         return h, x
