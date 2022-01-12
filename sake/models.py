@@ -127,17 +127,18 @@ class RecurrentDenseSAKEModel(torch.nn.Module):
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
-                    order=idx,
+                    order=1,
                     *args, **kwargs,
                 )
             )
 
     def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
         x = x.unsqueeze(-3)
+        x0 = x
         h = self.embedding_in(h)
         for idx, eq_layer in enumerate(self.eq_layers):
-            h, _x = eq_layer(h, x, mask=mask)
-            x = torch.cat([x, _x], dim=-3) # / math.sqrt(2)
+            h, x = eq_layer(h, x, mask=mask)
+            x = torch.cat([x0, x[..., -1, :, :].unsqueeze(-3)], dim=-3) # / math.sqrt(2)
         h = self.embedding_out(h)
 
         return h, x
