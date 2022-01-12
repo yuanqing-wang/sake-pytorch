@@ -143,7 +143,7 @@ class ContinuousFilterConvolutionWithConcatenationRecurrent(torch.nn.Module):
 
         # (batch_size, t, n, n, kernel_dimension)
         h = h.view(
-            *h.shape[:-4],
+            *h.shape[:-3],
             self.seq_dimension,
             h.shape[-2],
             h.shape[-2],
