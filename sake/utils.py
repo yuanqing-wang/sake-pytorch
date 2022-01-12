@@ -136,13 +136,14 @@ class ContinuousFilterConvolutionWithConcatenationRecurrent(torch.nn.Module):
             activation,
         )
 
+
     def forward(self, h, x):
         # (batch_size, n, n, t * kernel_dimension)
         h = self.mlp_in(h)
 
         # (batch_size, t, n, n, kernel_dimension)
         h = h.view(
-            *h.shape[:-3],
+            *h.shape[:-4],
             self.seq_dimension,
             h.shape[-2],
             h.shape[-2],
@@ -151,7 +152,7 @@ class ContinuousFilterConvolutionWithConcatenationRecurrent(torch.nn.Module):
 
         # (batch_size, t, n, n, kernel_dimension)
         _x = self.kernel(x)
-        _x = h * x
+        _x = h * _x
 
         # (batch_size, n, n, kernel_dimension * t)
         _x = _x.view(

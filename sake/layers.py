@@ -113,6 +113,8 @@ class DenseSAKELayer(SAKELayer):
         return x
 
     def euclidean_attention(self, x_minus_xt_norm):
+
+
         # (batch_size, n, n, 1)
         _x_minus_xt_norm = x_minus_xt_norm + 1e5 * torch.eye(
             x_minus_xt_norm.shape[-2],
@@ -170,20 +172,20 @@ class RecurrentDenseSAKELayer(DenseSAKELayer):
         n_coefficients: int=32,
         order: int=0,
     ):
-        super().__init__(
+        super(RecurrentDenseSAKELayer, self).__init__(
             in_features=in_features,
             out_features=out_features,
             hidden_features=hidden_features,
             update_coordinate=update_coordinate,
             residual=residual,
             activation=activation,
-            distance_filter=distance_filter,
             attention=attention,
             n_coefficients=n_coefficients,
         )
 
         self.order = order
         self.seq_dimension = 2 ** order
+        self.edge_model = distance_filter(2*in_features, hidden_features, seq_dimension=self.seq_dimension)
 
         self.coordinate_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
@@ -202,6 +204,7 @@ class RecurrentDenseSAKELayer(DenseSAKELayer):
             activation,
             torch.nn.Linear(hidden_features, n_coefficients * self.seq_dimension),
         )
+
 
     def coordinate_model(self, x, x_minus_xt, h_e_mtx):
         # x.shape = (batch_size, t, n, 3)
@@ -277,7 +280,7 @@ class RecurrentDenseSAKELayer(DenseSAKELayer):
         h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
 
         # (batch_size, n, n, 1)
-        combined_attention = self.combined_attention(x_minus_xt_norm[..., 0, 0], h_e_mtx)
+        combined_attention = self.combined_attention(x_minus_xt_norm[..., 0, :, :, :], h_e_mtx)
         h_e_mtx = h_e_mtx * combined_attention
         h_e = self.aggregate(h_e_mtx, mask=mask)
         h = self.node_model(h, h_e, h_combinations)
