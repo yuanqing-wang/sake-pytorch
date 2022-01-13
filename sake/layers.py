@@ -72,16 +72,16 @@ class SAKELayer(torch.nn.Module):
             torch.nn.Linear(hidden_features, n_coefficients * n_basis),
         )
 
-        self.post_norm_mlp = torch.nn.Sequential(
-            torch.nn.Linear(n_coefficients * n_basis, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, hidden_features),
-        )
-
         self.pre_norm_mlp = torch.nn.Sequential(
             torch.nn.Linear(n_basis, n_basis),
             activation,
             torch.nn.Linear(n_basis, n_basis),
+        )
+
+        self.post_norm_mlp = torch.nn.Sequential(
+            torch.nn.Linear(n_coefficients * n_basis, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
         )
 
         self.log_gamma = torch.nn.Parameter(torch.ones(n_heads))
@@ -94,10 +94,9 @@ class SAKELayer(torch.nn.Module):
 class DenseSAKELayer(SAKELayer):
     def radial_embedding(self, x_minus_xt, x_minus_xt_norm):
         # (batch_size, n, n, n_basis)
-        x_minus_xt_norm_minus_mu = x_minus_xt_norm - self.mu
-
-        # (batch_size, n, n, n_basis)
-        x_minus_xt_norm_minus_mu = self.pre_norm_mlp(x_minus_xt_norm_minus_mu)
+        x_minus_xt_norm_minus_mu = self.pre_norm_mlp(
+            x_minus_xt_norm - self.mu
+        )
 
         return x_minus_xt_norm_minus_mu
 
@@ -118,7 +117,7 @@ class DenseSAKELayer(SAKELayer):
         )
 
         # (batch_size, n, n, 3)
-        directions = x_minus_xt / (x_minus_xt + 1e-5)
+        directions = x_minus_xt / (x_minus_xt_norm + 1e-5)
 
         # (batch_size, n, n, n_basis)
         x_minus_xt_norm_minus_mu = self.radial_embedding(x_minus_xt, x_minus_xt_norm)
