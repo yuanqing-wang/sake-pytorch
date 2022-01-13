@@ -1,206 +1,30 @@
 import pytest
 import numpy.testing as npt
 
-def test_simple_forward():
+def test_simple_forward(_equivariance_test_utils):
     import sake
-    import torch
-    x = torch.randn(8, 3)
-    h = torch.randn(8, 5)
-    layer = sake.DenseSAKELayer(5, 6, 7)
-    _x, _h = layer(h, x)
+    h0, x0, _, __, ___ = _equivariance_test_utils
+    layer = sake.DenseSAKELayer(7, 6, 5, residual=False)
+    h, x = layer(h0, x0)
+    assert h.shape[0] == 5 == x.shape[0]
+    assert x.shape[1] == 3
+    assert h.shape[1] == 6
 
-def test_simple_forward_concat_filter():
+def test_equivariance(_equivariance_test_utils):
     import sake
-    import torch
-    x = torch.randn(8, 3)
-    h = torch.randn(8, 5)
-    layer = sake.DenseSAKELayer(5, 6, 7, distance_filter=sake.ConcatenationFilter)
-    _x, _h = layer(h, x)
+    from sake.utils import assert_almost_equal_tensor
+    h0, x0, translation, rotation, reflection = _equivariance_test_utils
+    layer = sake.DenseSAKELayer(7, 6, 5, residual=False, update_coordinate=True)
 
-def test_layer_simple_graph_equivariant():
-    import torch
-    import dgl
-    import sake
-    h0 = torch.distributions.Normal(
-        torch.zeros(5, 7),
-        torch.ones(5, 7),
-    ).sample()
-    x0 = torch.distributions.Normal(
-        torch.zeros(5, 3),
-        torch.ones(5, 3),
-    ).sample()
-    layer = sake.DenseSAKELayer(in_features=7, hidden_features=8, out_features=9)
-
-    # original
     h_original, x_original = layer(h0, x0)
+    h_translation, x_translation = layer(h0, translation(x0))
+    h_rotation, x_rotation = layer(h0, rotation(x0))
+    h_reflection, x_reflection = layer(h0, reflection(x0))
 
-    # ~~~~~~~~~~~
-    # translation
-    # ~~~~~~~~~~~
-    translation = torch.distributions.Normal(
-        torch.zeros(1, 3),
-        torch.ones(1, 3),
-    ).sample()
+    assert_almost_equal_tensor(h_translation, h_original, decimal=3)
+    assert_almost_equal_tensor(h_rotation, h_original, decimal=3)
+    assert_almost_equal_tensor(h_reflection, h_original, decimal=3)
 
-    h_translation, x_translation = layer(
-        h0,
-        x0 + translation
-    )
-
-    npt.assert_almost_equal(h_translation.detach().numpy(), h_original.detach().numpy(), decimal=2)
-    npt.assert_almost_equal(x_translation.detach().numpy(), (x_original + translation).detach().numpy(), decimal=2)
-
-
-    # ~~~~~~~~
-    # rotation
-    # ~~~~~~~~
-    import math
-    alpha = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-    beta = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-    gamma = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-
-    rz = torch.tensor(
-        [
-            [math.cos(alpha), -math.sin(alpha), 0],
-            [math.sin(alpha),  math.cos(alpha), 0],
-            [0,                0,               1],
-        ]
-    )
-
-    ry = torch.tensor(
-        [
-            [math.cos(beta),   0,               math.sin(beta)],
-            [0,                1,               0],
-            [-math.sin(beta),  0,               math.cos(beta)],
-        ]
-    )
-
-    rx = torch.tensor(
-        [
-            [1,                0,               0],
-            [0,                math.cos(gamma), -math.sin(gamma)],
-            [0,                math.sin(gamma), math.cos(gamma)],
-        ]
-    )
-
-    h_rotation, x_rotation = layer(
-        h0,
-        x0 @ rz @ ry @ rx,
-    )
-
-    npt.assert_almost_equal(h_rotation.detach().numpy(), h_original.detach().numpy(), decimal=2)
-    npt.assert_almost_equal(x_rotation.detach().numpy(), (x_original @ rz @ ry @ rx).detach().numpy(), decimal=2)
-
-    # ~~~~~~~~~~
-    # reflection
-    # ~~~~~~~~~~
-    alpha = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-    beta = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-    gamma = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-    v = torch.tensor([[alpha, beta, gamma]])
-    v /= v.norm()
-
-    p = torch.eye(3) - 2 * v.T @ v
-
-    h_reflection, x_reflection = layer(
-        h0,
-        x0 @ p,
-    )
-
-    npt.assert_almost_equal(h_reflection.detach().numpy(), h_original.detach().numpy(), decimal=2)
-    npt.assert_almost_equal(x_reflection.detach().numpy(), (x_original @ p).detach().numpy(), decimal=2)
-
-
-
-def test_layer_simple_graph_equivariant_batch():
-    import torch
-    import dgl
-    import sake
-    h0 = torch.distributions.Normal(
-        torch.zeros(20, 5, 7),
-        torch.ones(20, 5, 7),
-    ).sample()
-    x0 = torch.distributions.Normal(
-        torch.zeros(20, 5, 3),
-        torch.ones(20, 5, 3),
-    ).sample()
-    layer = sake.DenseSAKELayer(in_features=7, hidden_features=8, out_features=9)
-
-    # original
-    h_original, x_original = layer(h0, x0)
-
-    # ~~~~~~~~~~~
-    # translation
-    # ~~~~~~~~~~~
-    translation = torch.distributions.Normal(
-        torch.zeros(1, 3),
-        torch.ones(1, 3),
-    ).sample()
-
-    h_translation, x_translation = layer(
-        h0,
-        x0 + translation
-    )
-
-    npt.assert_almost_equal(h_translation.detach().numpy(), h_original.detach().numpy(), decimal=2)
-    npt.assert_almost_equal(x_translation.detach().numpy(), (x_original + translation).detach().numpy(), decimal=2)
-
-
-    # ~~~~~~~~
-    # rotation
-    # ~~~~~~~~
-    import math
-    alpha = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-    beta = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-    gamma = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-
-    rz = torch.tensor(
-        [
-            [math.cos(alpha), -math.sin(alpha), 0],
-            [math.sin(alpha),  math.cos(alpha), 0],
-            [0,                0,               1],
-        ]
-    )
-
-    ry = torch.tensor(
-        [
-            [math.cos(beta),   0,               math.sin(beta)],
-            [0,                1,               0],
-            [-math.sin(beta),  0,               math.cos(beta)],
-        ]
-    )
-
-    rx = torch.tensor(
-        [
-            [1,                0,               0],
-            [0,                math.cos(gamma), -math.sin(gamma)],
-            [0,                math.sin(gamma), math.cos(gamma)],
-        ]
-    )
-
-    h_rotation, x_rotation = layer(
-        h0,
-        x0 @ rz @ ry @ rx,
-    )
-
-    npt.assert_almost_equal(h_rotation.detach().numpy(), h_original.detach().numpy(), decimal=2)
-    npt.assert_almost_equal(x_rotation.detach().numpy(), (x_original @ rz @ ry @ rx).detach().numpy(), decimal=2)
-
-    # ~~~~~~~~~~
-    # reflection
-    # ~~~~~~~~~~
-    alpha = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-    beta = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-    gamma = torch.distributions.Uniform(-math.pi, math.pi).sample().item()
-    v = torch.tensor([[alpha, beta, gamma]])
-    v /= v.norm()
-
-    p = torch.eye(3) - 2 * v.T @ v
-
-    h_reflection, x_reflection = layer(
-        h0,
-        x0 @ p,
-    )
-
-    npt.assert_almost_equal(h_reflection.detach().numpy(), h_original.detach().numpy(), decimal=2)
-    npt.assert_almost_equal(x_reflection.detach().numpy(), (x_original @ p).detach().numpy(), decimal=2)
+    assert_almost_equal_tensor(x_translation, translation(x_original), decimal=3)
+    assert_almost_equal_tensor(x_rotation, rotation(x_original), decimal=3)
+    assert_almost_equal_tensor(x_reflection, reflection(x_original), decimal=3)

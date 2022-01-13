@@ -84,6 +84,92 @@ class HardCutOff(torch.nn.Module):
             1e-14,
         )
 
+class ContinuousFilterConvolutionWithConcatenation(torch.nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        activation: Callable=torch.nn.SiLU(),
+        kernel: Callable=RBF(),
+    ):
+        super(ContinuousFilterConvolutionWithConcatenation, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.kernel = kernel
+        kernel_dimension = kernel.out_features
+        self.mlp_in = torch.nn.Linear(in_features, kernel_dimension)
+        self.mlp_out = torch.nn.Sequential(
+            torch.nn.Linear(kernel_dimension + 1, out_features),
+            activation,
+            torch.nn.Linear(out_features, out_features),
+            activation,
+        )
+
+    def forward(self, h, x):
+        h = self.mlp_in(h)
+        _x = self.kernel(x)
+        h = self.mlp_out(torch.cat([h * _x, x], dim=-1)) # * (1.0 - torch.eye(x.shape[-2], x.shape[-2], device=x.device).unsqueeze(-1))
+
+        return h
+
+class ContinuousFilterConvolutionWithConcatenationRecurrent(torch.nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        out_features: int,
+        activation: Callable=torch.nn.SiLU(),
+        kernel: Callable=RBF(),
+        seq_dimension=1,
+    ):
+        super(ContinuousFilterConvolutionWithConcatenationRecurrent, self).__init__()
+        self.in_features = in_features
+        self.out_features = out_features
+        self.kernel = kernel
+        self.seq_dimension = seq_dimension
+        kernel_dimension = kernel.out_features
+        self.kernel_dimension = kernel_dimension
+        self.mlp_in = torch.nn.Linear(in_features, seq_dimension * kernel_dimension)
+        self.mlp_out = torch.nn.Sequential(
+            torch.nn.Linear(kernel_dimension * seq_dimension + seq_dimension, out_features),
+            activation,
+            torch.nn.Linear(out_features, out_features),
+            activation,
+        )
+
+
+    def forward(self, h, x):
+        # (batch_size, n, n, t * kernel_dimension)
+        h = self.mlp_in(h)
+
+        # (batch_size, t, n, n, kernel_dimension)
+        h = h.view(
+            *h.shape[:-3],
+            self.seq_dimension,
+            h.shape[-2],
+            h.shape[-2],
+            self.kernel_dimension
+        )
+
+        # (batch_size, t, n, n, kernel_dimension)
+        _x = self.kernel(x)
+        _x = h * _x
+
+        # (batch_size, n, n, kernel_dimension * t)
+        _x = _x.view(
+            *_x.shape[:-4],
+            _x.shape[-2],
+            _x.shape[-2],
+            self.seq_dimension * self.kernel_dimension
+        )
+
+        # (batch_size, n, n, t)
+        x = x.movedim(-4, -1).flatten(-2, -1)
+
+        # (batch_size, n, n, d)
+        h = self.mlp_out(torch.cat([_x, x], dim=-1))
+        return h
+
+
 class ContinuousFilterConvolution(torch.nn.Module):
     def __init__(
         self,
@@ -123,7 +209,8 @@ class ConcatenationFilter(torch.nn.Module):
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(in_features + 1, out_features),
             activation,
-            torch.nn.Linear(out_features, out_features)
+            torch.nn.Linear(out_features, out_features),
+            activation,
         )
 
     def forward(self, h, x):
@@ -131,6 +218,34 @@ class ConcatenationFilter(torch.nn.Module):
             torch.cat([h, x], dim=-1),
         )
         return h
+
+class Readout(torch.nn.Module):
+    def __init__(
+            self,
+            in_features:int=128,
+            hidden_features:int=128,
+            out_features:int=1,
+            activation: Callable=torch.nn.SiLU(),
+        ):
+        super().__init__()
+        self.before_sum = torch.nn.Sequential(
+            torch.nn.Linear(in_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+        self.after_sum = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, out_features),
+        )
+
+    def forward(self, h, mask=None):
+        h = self.before_sum(h)
+        h = h * mask # torch.sign(mask.sum(dim=-1, keepdim=True))
+        h = h.sum(dim=-2)
+        h = self.after_sum(h)
+        return h
+
 
 def bootstrap(metric, n_samples=100, ci=0.95):
     def _bootstraped(input, target, metric=metric, n_samples=n_samples, ci=ci):
@@ -158,3 +273,11 @@ def bootstrap(metric, n_samples=100, ci=0.95):
         return original, low, high
 
     return _bootstraped
+
+def assert_almost_equal_tensor(x0, x1, *args, **kwargs):
+    import numpy.testing as npt
+    npt.assert_almost_equal(
+        x0.cpu().detach().numpy(),
+        x1.cpu().detach().numpy(),
+        *args, **kwargs,
+    )

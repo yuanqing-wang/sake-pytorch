@@ -1,23 +1,20 @@
 import pytest
 import numpy.testing as npt
 
-def test_import():
-    import sake
-    from sake.models import DenseSAKEModel
-    from sake import DenseSAKEModel
-
 def test_simple_forward():
     import sake
+    from sake.baselines.egnn import EGNNLayer
     import torch
     x = torch.randn(8, 3)
     h = torch.randn(8, 5)
-    layer = sake.DenseSAKEModel(5, 6, 7)
+    layer = EGNNLayer(5, 6, 7)
     _x, _h = layer(h, x)
 
 def test_layer_simple_graph_equivariant():
     import torch
     import dgl
     import sake
+    from sake.baselines.egnn import EGNNLayer
     h0 = torch.distributions.Normal(
         torch.zeros(5, 7),
         torch.ones(5, 7),
@@ -26,7 +23,7 @@ def test_layer_simple_graph_equivariant():
         torch.zeros(5, 3),
         torch.ones(5, 3),
     ).sample()
-    layer = sake.DenseSAKEModel(in_features=7, hidden_features=8, out_features=9)
+    layer = EGNNLayer(in_features=7, hidden_features=8, out_features=9)
 
     # original
     h_original, x_original = layer(h0, x0)
@@ -113,6 +110,8 @@ def test_layer_simple_graph_equivariant_batch():
     import torch
     import dgl
     import sake
+    from sake.baselines.egnn import EGNNLayer
+
     h0 = torch.distributions.Normal(
         torch.zeros(20, 5, 7),
         torch.ones(20, 5, 7),
@@ -121,7 +120,7 @@ def test_layer_simple_graph_equivariant_batch():
         torch.zeros(20, 5, 3),
         torch.ones(20, 5, 3),
     ).sample()
-    layer = sake.DenseSAKEModel(in_features=7, hidden_features=8, out_features=9)
+    layer = EGNNLayer(in_features=7, hidden_features=8, out_features=9)
 
     # original
     h_original, x_original = layer(h0, x0)

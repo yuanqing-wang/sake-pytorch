@@ -1,8 +1,9 @@
 import torch
 import dgl
 from typing import Union, Callable, List
-from .layers import DenseSAKELayer, SparseSAKELayer
-from .utils import ContinuousFilterConvolution, ConcatenationFilter
+from .layers import DenseSAKELayer, RecurrentDenseSAKELayer # , SparseSAKELayer
+from .utils import ContinuousFilterConvolution, ConcatenationFilter, ContinuousFilterConvolutionWithConcatenation
+import math
 
 class DenseSAKEModel(torch.nn.Module):
     def __init__(
@@ -11,8 +12,8 @@ class DenseSAKEModel(torch.nn.Module):
         hidden_features: int,
         out_features: int,
         depth: int=4,
+        layer: torch.nn.Module=DenseSAKELayer,
         activation: Callable=torch.nn.SiLU(),
-        sum_readout: Union[None, Callable]=None,
         batch_norm: bool=False,
         update_coordinate: Union[List, bool]=False,
         *args, **kwargs,
@@ -29,7 +30,6 @@ class DenseSAKEModel(torch.nn.Module):
         )
         self.activation = activation
         self.depth = depth
-        self.sum_readout = sum_readout
         self.batch_norm = batch_norm
         self.eq_layers = torch.nn.ModuleList()
 
@@ -38,7 +38,7 @@ class DenseSAKEModel(torch.nn.Module):
 
         for idx in range(0, depth):
             self.eq_layers.append(
-                DenseSAKELayer(
+                layer(
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
@@ -47,29 +47,106 @@ class DenseSAKEModel(torch.nn.Module):
                 )
             )
 
-        if sum_readout is None:
-            sum_readout = torch.nn.Sequential(
-                    torch.nn.Linear(hidden_features, hidden_features),
-                    activation,
-                    torch.nn.Linear(hidden_features, out_features),
-                )
-           
-        self.sum_readout = sum_readout
-
-    def forward(self, h, x, *args, **kwargs):
+    def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
         h = self.embedding_in(h)
         for idx, eq_layer in enumerate(self.eq_layers):
-            h_ = h
-            h, x = eq_layer(h, x, *args, **kwargs)
-            h = self.activation(h)
-            h = h + h_
-
+            h, x = eq_layer(h, x, mask=mask)
         h = self.embedding_out(h)
-        if self.sum_readout is not None:
-            h = h.sum(dim=-2)
-            h = self.sum_readout(h)
 
         return h, x
+#
+# class RecurrentDenseSAKEModel(torch.nn.Module):
+#     def __init__(
+#         self,
+#         in_features: int,
+#         hidden_features: int,
+#         out_features: int,
+#         depth: int=4,
+#         layer: torch.nn.Module=DenseSAKELayer,
+#         activation: Callable=torch.nn.SiLU(),
+#         batch_norm: bool=False,
+#         update_coordinate: Union[List, bool]=False,
+#         *args, **kwargs,
+#     ):
+#         super(RecurrentDenseSAKEModel, self).__init__()
+#         self.in_features = in_features
+#         self.hidden_features = hidden_features
+#         self.out_features = out_features
+#         self.embedding_in = torch.nn.Linear(in_features, hidden_features)
+#         self.embedding_out = torch.nn.Linear(hidden_features, out_features)
+#         self.activation = activation
+#         self.depth = depth
+#         self.batch_norm = batch_norm
+#         self.eq_layers = torch.nn.ModuleList()
+#
+#         if isinstance(update_coordinate, bool):
+#             update_coordinate = [update_coordinate for _ in range(depth)]
+#
+#         for idx in range(0, depth):
+#             self.eq_layers.append(
+#                 layer(
+#                     in_features=hidden_features,
+#                     hidden_features=hidden_features,
+#                     out_features=hidden_features,
+#                     update_coordinate=update_coordinate[idx],
+#                     *args, **kwargs,
+#                 )
+#             )
+#
+#     def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
+#         h = self.embedding_in(h)
+#         for idx, eq_layer in enumerate(self.eq_layers):
+#             h, _x = eq_layer(h, x, mask=mask)
+#             x = torch.cat([x, _x], dim=-1) # / math.sqrt(2)
+#         h = self.embedding_out(h)
+#
+#         return h, x
+
+class RecurrentDenseSAKEModel(torch.nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features: int,
+        out_features: int,
+        depth: int=4,
+        layer: torch.nn.Module=RecurrentDenseSAKELayer,
+        activation: Callable=torch.nn.SiLU(),
+        batch_norm: bool=False,
+        *args, **kwargs,
+    ):
+        super(RecurrentDenseSAKEModel, self).__init__()
+        self.in_features = in_features
+        self.hidden_features = hidden_features
+        self.out_features = out_features
+        self.embedding_in = torch.nn.Linear(in_features, hidden_features)
+        self.embedding_out = torch.nn.Linear(hidden_features, out_features)
+        self.activation = activation
+        self.depth = depth
+        self.batch_norm = batch_norm
+        self.eq_layers = torch.nn.ModuleList()
+
+        for idx in range(0, depth):
+            self.eq_layers.append(
+                layer(
+                    in_features=hidden_features,
+                    hidden_features=hidden_features,
+                    out_features=hidden_features,
+                    order=1,
+                    *args, **kwargs,
+                )
+            )
+
+    def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
+        x = x.unsqueeze(-3)
+        x0 = x
+        h = self.embedding_in(h)
+        for idx, eq_layer in enumerate(self.eq_layers):
+            x = torch.cat([x0, x[..., -1, :, :].unsqueeze(-3)], dim=-3)
+            h, x = eq_layer(h, x, mask=mask)
+        h = self.embedding_out(h)
+
+        return h, x
+
 
 class TandemDenseSAKEModel(torch.nn.Module):
     def __init__(
@@ -79,8 +156,8 @@ class TandemDenseSAKEModel(torch.nn.Module):
         out_features: int,
         depth: int=4,
         activation: Callable=torch.nn.SiLU(),
-        sum_readout: Union[None, Callable]=None,
-        batch_norm: bool=False,
+        distance_filter: Callable=ContinuousFilterConvolutionWithConcatenation,
+        share_parameters: bool=True,
         *args, **kwargs,
     ):
         super(TandemDenseSAKEModel, self).__init__()
@@ -95,51 +172,49 @@ class TandemDenseSAKEModel(torch.nn.Module):
         )
         self.activation = activation
         self.depth = depth
-        self.sum_readout = sum_readout
-        self.batch_norm = batch_norm
+        self.share_parameters = share_parameters
+
         self.eq_layers = torch.nn.ModuleList()
-        self.in_layers = torch.nn.ModuleList()
-
-        for idx in range(0, depth):
-            self.in_layers.append(
-                DenseSAKELayer(
-                    in_features=hidden_features,
-                    hidden_features=hidden_features,
-                    out_features=hidden_features,
-                    distance_filter=ContinuousFilterConvolution,
-                    *args, **kwargs,
-                )
-            )
-
         for idx in range(0, depth):
             self.eq_layers.append(
                 DenseSAKELayer(
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
-                    distance_filter=ConcatenationFilter,
+                    distance_filter=distance_filter,
+                    update_coordinate=True,
+                    residual=False,
                     *args, **kwargs,
                 )
             )
 
-    def forward(self, h, x, *args, **kwargs):
+        if share_parameters:
+            self.in_layers = self.eq_layers
+        else:
+            self.in_layers = torch.nn.ModuleList()
+            for idx in range(0, depth):
+                self.in_layers.append(
+                    DenseSAKELayer(
+                        in_features=hidden_features,
+                        hidden_features=hidden_features,
+                        out_features=hidden_features,
+                        distance_filter=distance_filter,
+                        update_coordinate=False,
+                        residual=False,
+                        *args, **kwargs,
+                    )
+                )
+
+
+    def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
         h = self.embedding_in(h)
         x0 = x
-        for idx in range(self.depth):
-            eq_layer = self.eq_layers[idx]
-            in_layer = self.in_layers[idx]
-            h_eq, x = eq_layer(h, x, *args, **kwargs)
-            h_eq = self.activation(h_eq)
-
-            h_in, _ = in_layer(h, x0, *args, **kwargs)
-            h_in = self.activation(h_in)
+        for eq_layer, in_layer in zip(self.eq_layers, self.in_layers):
+            h_eq, x = eq_layer(h, x, mask=mask)
+            h_in, _ = in_layer(h, x0, mask=mask, update_coordinate=False)
             h = h_in + h_eq + h
 
         h = self.embedding_out(h)
-        if self.sum_readout is not None:
-            h = h.sum(dim=-2)
-            h = self.sum_readout(h)
-
         return h, x
 
 
