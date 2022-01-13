@@ -74,6 +74,8 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.log_gamma = torch.nn.Parameter(torch.ones(n_heads))
+        self.gamma0 = torch.nn.Parameter(torch.tensor(0.0))
+
         self.n_heads = n_heads
         self.n_coefficients = n_coefficients
 
