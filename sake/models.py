@@ -23,7 +23,11 @@ class DenseSAKEModel(torch.nn.Module):
         self.hidden_features = hidden_features
         self.out_features = out_features
         self.embedding_in = torch.nn.Linear(in_features, hidden_features)
-        self.embedding_out = torch.nn.Linear(hidden_features, out_features)
+        self.embedding_out = torch.nn.Sequential(
+                torch.nn.Linear(hidden_features, hidden_features),
+                activation,
+                torch.nn.Linear(hidden_features, hidden_features),
+        )
         self.activation = activation
         self.depth = depth
         self.batch_norm = batch_norm
