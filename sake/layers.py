@@ -33,6 +33,7 @@ class SAKELayer(torch.nn.Module):
         attention: bool=True,
         n_coefficients: int=32,
         n_heads: int=4,
+        velocity: bool=False,
     ):
         super().__init__()
 
@@ -46,10 +47,16 @@ class SAKELayer(torch.nn.Module):
 
         self.residual = residual
         self.update_coordinate = update_coordinate
-
+        self.velocity = velocity
         # if update_coordinate:
         self.coordinate_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, 1, bias=False),
+        )
+
+        self.velocity_mlp = torch.nn.Sequential(
+            torch.nn.Linear(in_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, 1, bias=False),
         )
@@ -112,13 +119,10 @@ class DenseSAKELayer(SAKELayer):
 
     def coordinate_model(self, x, x_minus_xt, h_e_mtx):
         translation = x_minus_xt * self.coordinate_mlp(h_e_mtx)
-        agg = translation.mean(dim=-2)
-        x = x + agg
-        return x
+        delta_v = translation.mean(dim=-2)
+        return delta_v
 
     def euclidean_attention(self, x_minus_xt_norm):
-
-
         # (batch_size, n, n, 1)
         _x_minus_xt_norm = x_minus_xt_norm + 1e5 * torch.eye(
             x_minus_xt_norm.shape[-2],
@@ -152,18 +156,33 @@ class DenseSAKELayer(SAKELayer):
         combined_attention = (euclidean_attention * semantic_attention).softmax(dim=-2)
         return combined_attention
 
-    def forward(self, h, x, mask: Union[None, torch.Tensor]=None, update_coordinate: bool=True):
+    def velocity_model(self, v, h):
+        v = self.velocity_mlp(h) * v
+        return v
+
+    def forward(self, h, x, v: Union[None, torch.Tensor]=None, mask: Union[None, torch.Tensor]=None):
         x_minus_xt = get_x_minus_xt(x)
         x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
         h_cat_ht = get_h_cat_h(h)
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
-        if self.update_coordinate and update_coordinate:
-            x = self.coordinate_model(x, x_minus_xt, h_e_mtx)
+        if self.update_coordinate:
+            delta_v = self.coordinate_model(x, x_minus_xt, h_e_mtx)
+
+            if v is not None and self.velocity:
+                v = self.velocity_model(v, h)
+            else:
+                v = 0.0
+
+            v = delta_v + v
+            x = x + v
+
         h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
         combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
         h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
         h_e = self.aggregate(h_e_mtx, mask=mask)
         h = self.node_model(h, h_e, h_combinations)
+        if self.velocity:
+            return h, x, v
         return h, x
 
 class RecurrentDenseSAKELayer(DenseSAKELayer):
