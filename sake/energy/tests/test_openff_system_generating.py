@@ -16,3 +16,11 @@ def test_single_energy():
     import numpy as np
     x = np.random.randn(5, 3)
     energy = single_energy_evaluation(x, simulation=simulation)
+
+def test_multiple_energy():
+    from sake.energy.utils import get_molecule_from_smiles, get_simulation_from_molecule, tensor_energy_evaluation
+    molecule = get_molecule_from_smiles("C")
+    simulation = get_simulation_from_molecule(molecule)
+    import torch
+    x = torch.distributions.Normal(0, 1).rsample((8, 5, 3))
+    energy = tensor_energy_evaluation(x, simulation=simulation)
