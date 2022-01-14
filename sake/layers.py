@@ -69,7 +69,11 @@ class SAKELayer(torch.nn.Module):
             torch.nn.Linear(hidden_features, n_coefficients * n_basis),
         )
 
-        self.basis_generating_mlp = torch.nn.Linear(n_heads * hidden_features, n_basis-1)
+        self.basis_generating_mlp = torch.nn.Sequential(
+            torch.nn.Linear(n_heads * hidden_features, hidden_features, bias=False),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_features, n_basis-1, bias=False),
+        )
 
         self.post_norm_mlp = torch.nn.Sequential(
             torch.nn.Linear(n_coefficients * n_basis, hidden_features),
@@ -120,10 +124,10 @@ class DenseSAKELayer(SAKELayer):
         # (batch_size, n, n_basis, n_coefficients, 3)
         combinations_sum = combinations.sum(dim=-4)
 
-        # (batch_size, n, n, n_basis, n_coefficients)
+        # (batch_size, n, n_basis, n_coefficients)
         combinations_norm = combinations_sum.pow(2).sum(-1)
 
-        # (batch_size, n, n, n_basis * n_coefficients)
+        # (batch_size, n, n_basis * n_coefficients)
         combinations_norm = combinations_norm.flatten(-2, -1)
 
         h_combinations = self.post_norm_mlp(combinations_norm)
