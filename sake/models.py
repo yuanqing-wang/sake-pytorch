@@ -79,7 +79,7 @@ class VelocityDenseSAKEModel(torch.nn.Module):
         self.embedding_out = torch.nn.Sequential(
                 torch.nn.Linear(hidden_features, hidden_features),
                 activation,
-                torch.nn.Linear(hidden_features, hidden_features),
+                torch.nn.Linear(hidden_features, out_features),
         )
         self.activation = activation
         self.depth = depth
@@ -96,14 +96,16 @@ class VelocityDenseSAKEModel(torch.nn.Module):
                     hidden_features=hidden_features,
                     out_features=hidden_features,
                     update_coordinate=update_coordinate[idx],
+                    velocity=True,
                     *args, **kwargs,
                 )
             )
 
     def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
         h = self.embedding_in(h)
+        v = None
         for idx, eq_layer in enumerate(self.eq_layers):
-            h, x = eq_layer(h, x, mask=mask)
+            h, x, v = eq_layer(h, x, v, mask=mask)
         h = self.embedding_out(h)
 
         return h, x
