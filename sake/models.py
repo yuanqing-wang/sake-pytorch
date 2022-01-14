@@ -26,7 +26,7 @@ class DenseSAKEModel(torch.nn.Module):
         self.embedding_out = torch.nn.Sequential(
                 torch.nn.Linear(hidden_features, hidden_features),
                 activation,
-                torch.nn.Linear(hidden_features, hidden_features),
+                torch.nn.Linear(hidden_features, out_features),
         )
         self.activation = activation
         self.depth = depth
