@@ -26,7 +26,7 @@ class DenseSAKEModel(torch.nn.Module):
         self.embedding_out = torch.nn.Sequential(
                 torch.nn.Linear(hidden_features, hidden_features),
                 activation,
-                torch.nn.Linear(hidden_features, hidden_features),
+                torch.nn.Linear(hidden_features, out_features),
         )
         self.activation = activation
         self.depth = depth
@@ -54,6 +54,62 @@ class DenseSAKEModel(torch.nn.Module):
         h = self.embedding_out(h)
 
         return h, x
+
+
+
+
+class VelocityDenseSAKEModel(torch.nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features: int,
+        out_features: int,
+        depth: int=4,
+        layer: torch.nn.Module=DenseSAKELayer,
+        activation: Callable=torch.nn.SiLU(),
+        batch_norm: bool=False,
+        update_coordinate: Union[List, bool]=False,
+        *args, **kwargs,
+    ):
+        super(VelocityDenseSAKEModel, self).__init__()
+        self.in_features = in_features
+        self.hidden_features = hidden_features
+        self.out_features = out_features
+        self.embedding_in = torch.nn.Linear(in_features, hidden_features)
+        self.embedding_out = torch.nn.Sequential(
+                torch.nn.Linear(hidden_features, hidden_features),
+                activation,
+                torch.nn.Linear(hidden_features, out_features),
+        )
+        self.activation = activation
+        self.depth = depth
+        self.batch_norm = batch_norm
+        self.eq_layers = torch.nn.ModuleList()
+
+        if isinstance(update_coordinate, bool):
+            update_coordinate = [update_coordinate for _ in range(depth)]
+
+        for idx in range(0, depth):
+            self.eq_layers.append(
+                layer(
+                    in_features=hidden_features,
+                    hidden_features=hidden_features,
+                    out_features=hidden_features,
+                    update_coordinate=update_coordinate[idx],
+                    velocity=True,
+                    *args, **kwargs,
+                )
+            )
+
+    def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
+        h = self.embedding_in(h)
+        v = None
+        for idx, eq_layer in enumerate(self.eq_layers):
+            h, x, v = eq_layer(h, x, v, mask=mask)
+        h = self.embedding_out(h)
+
+        return h, x
+
 #
 # class RecurrentDenseSAKEModel(torch.nn.Module):
 #     def __init__(
