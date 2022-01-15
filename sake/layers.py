@@ -62,6 +62,7 @@ class SAKELayer(torch.nn.Module):
         )
 
         torch.nn.init.xavier_uniform_(self.coordinate_mlp[2].weight, gain=0.001)
+        torch.nn.init.xavier_uniform_(self.velocity_mlp[2].weight, gain=0.001)
 
         self.semantic_attention_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, n_heads),
