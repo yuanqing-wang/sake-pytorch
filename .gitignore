@@ -129,4 +129,5 @@ dmypy.json
 .pyre/
 
 # data
-.qm9/qm9/
+qm9/qm9/
+en_flows/
