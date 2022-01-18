@@ -52,14 +52,20 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
             torch.nn.Linear(self.hidden_features, 1, bias=False),
         )
 
+        self.radial_expansion_mlp = torch.nn.Sequential(
+            torch.nn.Linear(self.in_features, self.hidden_features),
+            self.activation,
+            torch.nn.Linear(self.hidden_features, 1, bias=False),
+        )
+
     def velocity_model(self, v, h):
-        m = self.velocity_mlp(h).clamp(-10, 10)
+        m = self.velocity_mlp(h)# .clamp(-10, 10)
         v = m.exp() * v
         log_det = m.sum((-1, -2)) * v.shape[-1]
         return v, log_det
 
     def invert_velocity_model(self, v, h):
-        m = self.velocity_mlp(h).clamp(-10, 10)
+        m = self.velocity_mlp(h)# .clamp(-10, 10)
         v = (-m).exp() * v
         log_det = m.sum((-1, -2)) * v.shape[-1]
         return v, log_det
@@ -114,9 +120,19 @@ class SAKEFlowModel(HamiltonianFlowModel):
             torch.nn.Linear(hidden_features, hidden_features),
         )
 
-        self.layers = torch.nn.ModuleList()
+        self.xv_layers = torch.nn.ModuleList()
         for _ in range(depth):
-            self.layers.append(
+            self.xv_layers.append(
+                SAKEFlowLayer(
+                    in_features=hidden_features,
+                    hidden_features=hidden_features,
+                    out_features=hidden_features,
+                )
+            )
+
+        self.vx_layers = torch.nn.ModuleList()
+        for _ in range(depth):
+            self.vx_layers.append(
                 SAKEFlowLayer(
                     in_features=hidden_features,
                     hidden_features=hidden_features,
@@ -127,16 +143,24 @@ class SAKEFlowModel(HamiltonianFlowModel):
     def f_forward(self, h, x, v):
         h = self.embedding_in(h)
         sum_log_det = 0.0
-        for layer in self.layers:
-            x, v, log_det = layer.f_forward(h, x, v)
+        for xv_layer, vx_layer in zip(self.xv_layers, self.vx_layers):
+            x, v, log_det = xv_layer.f_forward(h, x, v)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            sum_log_det = sum_log_det + log_det
+            v, x, log_det = vx_layer.f_forward(h, v, x)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         return x, v, sum_log_det
 
     def f_backward(self, h, x, v):
         h = self.embedding_in(h)
         sum_log_det = 0.0
-        for layer in self.layers:
-            x, v, log_det = layer.f_backward(h, x, v)
+        for xv_layer, vx_layer in zip(self.xv_layers[::-1], self.vx_layers[::-1]):
+            v, x, log_det = vx_layer.f_backward(h, v, x)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            sum_log_det = sum_log_det + log_det
+            x, v, log_det = xv_layer.f_backward(h, x, v)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         return x, v, sum_log_det
 
@@ -158,10 +182,10 @@ class CenteredGaussian(torch.distributions.Normal):
         self.device = device
         return self
 
-    def cuda(self, device):
+    def cuda(self):
         return self.to("cuda:0")
 
-    def cpu(self, device):
+    def cpu(self):
         return self.to("cpu")
 
     def log_prob(self, value):
