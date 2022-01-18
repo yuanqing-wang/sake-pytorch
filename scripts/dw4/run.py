@@ -20,7 +20,7 @@ def run():
     data_test = data_test - data_test.mean(dim=-2, keepdim=True)
 
     from sake.flow import SAKEFlowModel, CenteredGaussian
-    model = SAKEFlowModel(1, 32, depth=2)
+    model = SAKEFlowModel(1, 32, depth=4)
 
     h = torch.zeros(100, 4, 1)
     x = data_train
