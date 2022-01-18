@@ -148,7 +148,7 @@ class DenseSAKELayer(SAKELayer):
         att = self.semantic_attention_mlp(h_e_mtx)
 
         # (batch_size, n, n, n_heads)
-        att = att.view(*att.shape[:-1], self.n_heads)
+        # att = att.view(*att.shape[:-1], self.n_heads)
         att = att - 1e5* torch.eye(
             att.shape[-2],
             att.shape[-2],
@@ -178,7 +178,7 @@ class DenseSAKELayer(SAKELayer):
             if v is not None and self.velocity:
                 v = self.velocity_model(v, h)
             else:
-                v = 0.0
+                v = torch.zeros_like(x)
 
             v = delta_v + v
             x = x + v
