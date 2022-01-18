@@ -182,7 +182,6 @@ class SAKEFlowModel(HamiltonianFlowModel):
         x, v, sum_log_det = self.f_backward(h, x, v)
         nll_x = -x_prior.log_prob(x).mean()
         nll_v = -v_prior.log_prob(v).mean()
-        print(nll_x)
         return nll_x + nll_v + sum_log_det.mean()
 
 class CenteredGaussian(torch.distributions.Normal):
