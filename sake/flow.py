@@ -50,6 +50,7 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
             torch.nn.Linear(2*self.in_features, self.hidden_features),
             self.activation,
             torch.nn.Linear(self.hidden_features, 1, bias=False),
+            torch.nn.Tanh(),
         )
 
         self.radial_expansion_mlp = torch.nn.Sequential(
