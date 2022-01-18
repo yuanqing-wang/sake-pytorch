@@ -57,6 +57,14 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
             torch.nn.Linear(self.in_features + 1, self.hidden_features),
             self.activation,
             torch.nn.Linear(self.hidden_features, 1, bias=False),
+            torch.nn.Tanh(),
+        )
+
+        self.velocity_mlp = torch.nn.Sequential(
+            torch.nn.Linear(self.in_features, self.hidden_features),
+            self.activation,
+            torch.nn.Linear(self.hidden_features, 1, bias=False),
+            torch.nn.Tanh(),
         )
 
     def velocity_model(self, h, v):
