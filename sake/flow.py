@@ -68,13 +68,13 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
         )
 
     def velocity_model(self, h, v):
-        m = self.velocity_mlp(h).clamp(-10, 10)
+        m = self.velocity_mlp(h)
         v = m.exp() * v
         log_det = m.sum((-1, -2)) * v.shape[-1]
         return v, log_det
 
     def invert_velocity_model(self, h, v):
-        m = self.velocity_mlp(h).clamp(-10, 10)
+        m = self.velocity_mlp(h)
         v = (-m).exp() * v
         log_det = m.sum((-1, -2)) * v.shape[-1]
         return v, log_det
@@ -82,7 +82,7 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
     def radial_expansion_model(self, h, x, v):
         m = self.radial_expansion_mlp(
             torch.cat([h, v.pow(2).sum(dim=-1, keepdim=True)], dim=-1)
-        ).clamp(-10, 10)
+        )
         x = m.exp() * x
         log_det = m.sum((-1, -2)) * x.shape[-1]
         return x, log_det
@@ -90,7 +90,7 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
     def invert_radial_expansion_model(self, h, x, v):
         m = self.radial_expansion_mlp(
             torch.cat([h, v.pow(2).sum(dim=-1, keepdim=True)], dim=-1)
-        ).clamp(-10, 10)
+        )
         x = (-m).exp() * x
         log_det = m.sum((-1, -2)) * x.shape[-1]
         return x, log_det
@@ -186,8 +186,8 @@ class SAKEFlowModel(HamiltonianFlowModel):
         return nll_x + nll_v + sum_log_det.mean()
 
 class CenteredGaussian(torch.distributions.Normal):
-    def __init__(self):
-        super().__init__(loc=0.0, scale=1.0)
+    def __init__(self, scale=1.0):
+        super().__init__(loc=0.0, scale=scale)
         self.device = "cpu"
 
     def to(self, device):
@@ -206,7 +206,7 @@ class CenteredGaussian(torch.distributions.Normal):
         N = value.shape[-2]
         D = value.shape[-1]
         degrees_of_freedom = (N-1) * D
-        r2 = value.pow(2).flatten(-2, -1).sum(dim=-1)
+        r2 = value.pow(2).flatten(-2, -1).sum(dim=-1) / self.scale.pow(2)
         log_normalizing_constant = -0.5 * degrees_of_freedom * math.log(2*math.pi)
         log_px = -0.5 * r2 + log_normalizing_constant
         return log_px
