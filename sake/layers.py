@@ -40,7 +40,7 @@ class SAKELayer(torch.nn.Module):
         self.edge_model = distance_filter(2*in_features, hidden_features)
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(n_heads * hidden_features + hidden_features + in_features, hidden_features),
+            torch.nn.Linear(n_heads * hidden_features + 2 * hidden_features + in_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, out_features),
         )
@@ -111,8 +111,8 @@ class DenseSAKELayer(SAKELayer):
         h_e = h_e_mtx.sum(dim=-2)
         return h_e
 
-    def node_model(self, h, h_e, h_combinations):
-        out = torch.cat([h, h_e, h_combinations], dim=-1)
+    def node_model(self, h, h_e, h_combinations, h_combinations_v):
+        out = torch.cat([h, h_e, h_combinations, h_combinations_v], dim=-1)
         out = self.node_mlp(out)
         if self.residual:
             out = h + out
@@ -177,11 +177,14 @@ class DenseSAKELayer(SAKELayer):
             v = delta_v + v
             x = x + v
 
+        v_minus_vt = get_x_minus_xt(x)
+        v_minus_vt_norm = get_x_minus_xt_norm(x_minus_xt=v_minus_vt)
+        h_combinations_v = self.spatial_attention(h_e_mtx, v_minus_vt, v_minus_vt_norm, mask=mask)
         h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
         combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
         h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
         h_e = self.aggregate(h_e_mtx, mask=mask)
-        h = self.node_model(h, h_e, h_combinations)
+        h = self.node_model(h, h_e, h_combinations, h_combinations_v)
         if self.velocity:
             return h, x, v
         return h, x
