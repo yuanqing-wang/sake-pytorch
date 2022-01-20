@@ -119,8 +119,7 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
 
     def f_backward(self, h, x, v):
         # x, log_det_x = self.invert_radial_expansion_model(h, x, v)
-        log_det_x = 0.0
-        x = x - v
+        # x = x - v
         h = torch.cat([h, x.pow(2).sum(-1, keepdim=True)], dim=-1)
         # h = torch.cat([h, torch.zeros_like(x.pow(2).sum(-1, keepdim=True))], dim=-1)
         for _ in range(self.steps):
@@ -129,8 +128,7 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
         x_minus_xt = get_x_minus_xt(x)
         delta_v = self.coordinate_model(x, x_minus_xt, h_cat_ht)
         v = v - delta_v - self.lamb * x
-        v, log_det_v = self.invert_velocity_model(h, v)
-        log_det = log_det_x + log_det_v
+        v, log_det = self.invert_velocity_model(h, v)
         return x, v, log_det
 
     def f_forward(self, h, x, v):
@@ -141,12 +139,10 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
         h_cat_ht = get_h_cat_h(h)
         x_minus_xt = get_x_minus_xt(x)
         delta_v = self.coordinate_model(x, x_minus_xt, h_cat_ht)
-        v, log_det_v = self.velocity_model(h, v)
+        v, log_det = self.velocity_model(h, v)
         v = delta_v + v + self.lamb * x
-        x = x + v
+        # x = x + v
         # x, log_det_x = self.radial_expansion_model(h0, x, v)
-        log_det_x = 0.0
-        log_det = log_det_x + log_det_v
         return x, v, log_det
 
 class SAKEFlowModel(HamiltonianFlowModel):
