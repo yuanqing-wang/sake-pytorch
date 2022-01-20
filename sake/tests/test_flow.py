@@ -92,7 +92,7 @@ def test_model_jacobian(_equivariance_test_utils):
     x_and_v.requires_grad = True
 
     autograd_jacobian = torch.autograd.functional.jacobian(fn, x_and_v)
-    print(autograd_jacobian)
     assert_almost_equal_tensor(
-        autograd_jacobian.reshape(6, 6).det().abs().log(), log_det_fwd
+        autograd_jacobian.reshape(6, 6).det().abs().log(), log_det_fwd,
+        decimal=3,
     )

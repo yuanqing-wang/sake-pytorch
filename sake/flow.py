@@ -56,18 +56,22 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
             torch.nn.Tanh(),
         )
 
-        self.radial_expansion_mlp = torch.nn.Sequential(
-            torch.nn.Linear(self.in_features, self.hidden_features),
-            self.activation,
-            torch.nn.Linear(self.hidden_features, 1, bias=False),
-            torch.nn.Tanh(),
-        )
+        # self.radial_expansion_mlp = torch.nn.Sequential(
+        #     torch.nn.Linear(self.in_features, self.hidden_features),
+        #     self.activation,
+        #     torch.nn.Linear(self.hidden_features, 1, bias=False),
+        #     torch.nn.Tanh(),
+        # )
 
         self.velocity_mlp = torch.nn.Sequential(
             torch.nn.Linear(self.in_features, self.hidden_features),
             self.activation,
             torch.nn.Linear(self.hidden_features, 1, bias=False),
             torch.nn.Tanh(),
+        )
+
+        self.lamb = torch.nn.Parameter(
+            torch.tensor(1.0)
         )
 
     def velocity_model(self, h, v):
@@ -82,21 +86,21 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
         log_det = m.sum((-1, -2)) * v.shape[-1]
         return v, log_det
 
-    def radial_expansion_model(self, h, x, v):
-        m = self.radial_expansion_mlp(
-            torch.cat([h, v.pow(2).sum(dim=-1, keepdim=True)], dim=-1)
-        )
-        x = m.exp() * x
-        log_det = m.sum((-1, -2)) * x.shape[-1]
-        return x, log_det
-
-    def invert_radial_expansion_model(self, h, x, v):
-        m = self.radial_expansion_mlp(
-            torch.cat([h, v.pow(2).sum(dim=-1, keepdim=True)], dim=-1)
-        )
-        x = (-m).exp() * x
-        log_det = m.sum((-1, -2)) * x.shape[-1]
-        return x, log_det
+    # def radial_expansion_model(self, h, x, v):
+    #     m = self.radial_expansion_mlp(
+    #         torch.cat([h, v.pow(2).sum(dim=-1, keepdim=True)], dim=-1)
+    #     )
+    #     x = m.exp() * x
+    #     log_det = m.sum((-1, -2)) * x.shape[-1]
+    #     return x, log_det
+    #
+    # def invert_radial_expansion_model(self, h, x, v):
+    #     m = self.radial_expansion_mlp(
+    #         torch.cat([h, v.pow(2).sum(dim=-1, keepdim=True)], dim=-1)
+    #     )
+    #     x = (-m).exp() * x
+    #     log_det = m.sum((-1, -2)) * x.shape[-1]
+    #     return x, log_det
 
     def mp(self, h, x):
         h = torch.cat([h, torch.zeros_like(h[..., -1, :].unsqueeze(-2))], dim=-2)
@@ -124,13 +128,12 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
         h_cat_ht = get_h_cat_h(h)
         x_minus_xt = get_x_minus_xt(x)
         delta_v = self.coordinate_model(x, x_minus_xt, h_cat_ht)
-        v = v - delta_v
+        v = v - delta_v - self.lamb * x
         v, log_det_v = self.invert_velocity_model(h, v)
         log_det = log_det_x + log_det_v
         return x, v, log_det
 
     def f_forward(self, h, x, v):
-        h0 = h
         h = torch.cat([h, x.pow(2).sum(-1, keepdim=True)], dim=-1)
         #  = torch.cat([h, torch.zeros_like(x.pow(2).sum(-1, keepdim=True))], dim=-1)
         for _ in range(self.steps):
@@ -139,7 +142,7 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
         x_minus_xt = get_x_minus_xt(x)
         delta_v = self.coordinate_model(x, x_minus_xt, h_cat_ht)
         v, log_det_v = self.velocity_model(h, v)
-        v = delta_v + v
+        v = delta_v + v + self.lamb * x
         x = x + v
         # x, log_det_x = self.radial_expansion_model(h0, x, v)
         log_det_x = 0.0
@@ -177,7 +180,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
         sum_log_det = 0.0
         for layer in self.layers:
             x, v, log_det = layer.f_forward(h, x, v)
-            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         return x, v, sum_log_det
 
@@ -186,7 +189,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
         sum_log_det = 0.0
         for layer in self.layers[::-1]:
             x, v, log_det = layer.f_backward(h, x, v)
-            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         return x, v, sum_log_det
 
