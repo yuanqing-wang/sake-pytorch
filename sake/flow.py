@@ -8,6 +8,7 @@ from .functional import (
 )
 import math
 from typing import Union, Callable
+from .utils import ContinuousFilterConvolutionWithConcatenation
 
 class HamiltonianFlowLayer(torch.nn.Module, abc.ABC):
     def __init__(self, *args, **kwargs):
@@ -39,7 +40,7 @@ class HamiltonianFlowModel(torch.nn.Module, abc.ABC):
     #     raise NotImplementedError
 
 class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
-    steps = 2
+    steps = 4
     def __init__(self, *args, **kwargs):
         kwargs['update_coordinate'] = True
         kwargs['velocity'] = True
@@ -71,7 +72,7 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
         )
 
         self.lamb = torch.nn.Parameter(
-            torch.tensor(1.0)
+            torch.tensor(0.01)
         )
 
     def velocity_model(self, h, v):
@@ -161,31 +162,50 @@ class SAKEFlowModel(HamiltonianFlowModel):
             torch.nn.Linear(hidden_features, hidden_features),
         )
 
-        self.layers = torch.nn.ModuleList()
+        self.xv_layers = torch.nn.ModuleList()
+        self.vx_layers = torch.nn.ModuleList()
         for _ in range(depth):
-            self.layers.append(
+            self.xv_layers.append(
                 SAKEFlowLayer(
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     out_features=hidden_features,
+                    distance_filter=ContinuousFilterConvolutionWithConcatenation,
+                )
+            )
+
+            self.vx_layers.append(
+                SAKEFlowLayer(
+                    in_features=hidden_features,
+                    hidden_features=hidden_features,
+                    out_features=hidden_features,
+                    distance_filter=ContinuousFilterConvolutionWithConcatenation,
                 )
             )
 
     def f_forward(self, h, x, v):
         h = self.embedding_in(h)
         sum_log_det = 0.0
-        for layer in self.layers:
-            x, v, log_det = layer.f_forward(h, x, v)
-            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+        for xv_layer, vx_layer in zip(self.xv_layers, self.vx_layers):
+            x, v, log_det = xv_layer.f_forward(h, x, v)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            sum_log_det = sum_log_det + log_det
+
+            v, x, log_det = vx_layer.f_forward(h, x, v)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         return x, v, sum_log_det
 
     def f_backward(self, h, x, v):
         h = self.embedding_in(h)
         sum_log_det = 0.0
-        for layer in self.layers[::-1]:
-            x, v, log_det = layer.f_backward(h, x, v)
-            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+        for xv_layer, vx_layer in zip(self.xv_layers[::-1], self.vx_layers[::-1]):
+            x, v, log_det = xv_layer.f_backward(h, x, v)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            sum_log_det = sum_log_det + log_det
+
+            v, x, log_det = vx_layer.f_backward(h, x, v)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         return x, v, sum_log_det
 
@@ -194,41 +214,3 @@ class SAKEFlowModel(HamiltonianFlowModel):
         nll_x = -x_prior.log_prob(x).mean()
         nll_v = -v_prior.log_prob(v).mean()
         return nll_x + nll_v + sum_log_det.mean()
-
-class CenteredGaussian(torch.distributions.Normal):
-    def __init__(self, scale=1.0):
-        super().__init__(loc=0.0, scale=scale)
-        self.device = "cpu"
-
-    def to(self, device):
-        self.loc = self.loc.to(device)
-        self.scale = self.scale.to(device)
-        self.device = device
-        return self
-
-    def cuda(self):
-        return self.to("cuda:0")
-
-    def cpu(self):
-        return self.to("cpu")
-
-    def log_prob(self, value):
-        N = value.shape[-2]
-        D = value.shape[-1]
-        degrees_of_freedom = (N-1) * D
-        r2 = value.pow(2).flatten(-2, -1).sum(dim=-1) / self.scale.pow(2)
-        log_normalizing_constant = -0.5 * degrees_of_freedom * math.log(2*math.pi)
-        log_px = -0.5 * r2 + log_normalizing_constant
-        return log_px
-
-    def sample(self, *args, **kwargs):
-        x = super().sample(*args, **kwargs)
-        x = x - x.mean(dim=-2, keepdim=True)
-        x = x.to(self.device)
-        return x
-
-    def rsample(self, *args, **kwargs):
-        x = super().rsample(*args, **kwargs)
-        x = x - x.mean(dim=-2, keepdim=True)
-        x = x.to(self.device)
-        return x
