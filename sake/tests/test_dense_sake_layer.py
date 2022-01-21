@@ -10,6 +10,18 @@ def test_simple_forward(_equivariance_test_utils):
     assert x.shape[1] == 3
     assert h.shape[1] == 6
 
+def test_simple_forward_with_edge_features(_equivariance_test_utils):
+    import sake
+    import torch
+    h0, x0, _, __, ___ = _equivariance_test_utils
+    h_e_0 = torch.randn(h0.shape[0], h0.shape[0], 8)
+    layer = sake.DenseSAKELayer(7, 6, 5, residual=False, edge_features=8)
+    h, x = layer(h0, x0, h_e_0=h_e_0)
+    assert h.shape[0] == 5 == x.shape[0]
+    assert x.shape[1] == 3
+    assert h.shape[1] == 6
+
+
 def test_equivariance(_equivariance_test_utils):
     import sake
     from sake.utils import assert_almost_equal_tensor

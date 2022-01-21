@@ -33,11 +33,12 @@ class SAKELayer(torch.nn.Module):
         attention: bool=True,
         n_coefficients: int=32,
         n_heads: int=4,
+        edge_features: int=0,
         velocity: bool=False,
     ):
         super().__init__()
 
-        self.edge_model = distance_filter(2*in_features, hidden_features)
+        self.edge_model = distance_filter(2*in_features+edge_features, hidden_features)
 
         self.node_mlp = torch.nn.Sequential(
             torch.nn.Linear(n_heads * hidden_features + 2 * hidden_features + in_features, hidden_features),
@@ -46,6 +47,7 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.residual = residual
+        self.edge_features = edge_features
         self.update_coordinate = update_coordinate
         self.velocity = velocity
         # if update_coordinate:
@@ -76,6 +78,18 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.post_norm_mlp = torch.nn.Sequential(
+            torch.nn.Linear(n_coefficients, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+
+        self.coefficients_mlp_v = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, n_coefficients),
+        )
+
+        self.post_norm_mlp_v = torch.nn.Sequential(
             torch.nn.Linear(n_coefficients, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
@@ -161,11 +175,24 @@ class DenseSAKELayer(SAKELayer):
         v = self.velocity_mlp(h) * v
         return v
 
-    def forward(self, h, x, v: Union[None, torch.Tensor]=None, mask: Union[None, torch.Tensor]=None):
+    def forward(
+            self, 
+            h: torch.Tensor, 
+            x: torch.Tensor, 
+            v: Union[None, torch.Tensor]=None, 
+            mask: Union[None, torch.Tensor]=None, 
+            h_e_0: Union[None, torch.Tensor]=None,
+        ):
         x_minus_xt = get_x_minus_xt(x)
         x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
         h_cat_ht = get_h_cat_h(h)
+        
+        if self.edge_features > 0 and h_e_0 is not None:
+            h_cat_ht = torch.cat([h_cat_ht, h_e_0], dim=-1)
+
+
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
+
         if self.update_coordinate:
             delta_v = self.coordinate_model(x, x_minus_xt, h_e_mtx)
 

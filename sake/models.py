@@ -105,6 +105,9 @@ class VelocityDenseSAKEModel(torch.nn.Module):
         h = self.embedding_in(h)
         v = None
         for idx, eq_layer in enumerate(self.eq_layers):
+            x = x - x.mean(dim=-2, keepdim=True)
+            if v is not None:
+                v = v - v.mean(dim=-2, keepdim=True)
             h, x, v = eq_layer(h, x, v, mask=mask)
         h = self.embedding_out(h)
 
