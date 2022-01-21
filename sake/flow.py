@@ -40,7 +40,6 @@ class HamiltonianFlowModel(torch.nn.Module, abc.ABC):
     #     raise NotImplementedError
 
 class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
-    steps = 4
     def __init__(self, *args, **kwargs):
         kwargs['update_coordinate'] = True
         kwargs['velocity'] = True
@@ -48,6 +47,7 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
         kwargs['out_features'] = kwargs['out_features'] + 1 if 'out_features' in kwargs else args[1] + 1
         if 'hidden_features' not in kwargs: kwargs['hidden_features'] = args[2]
         super().__init__(**kwargs)
+        self.steps = 4
 
         # if update_coordinate:
         self.coordinate_mlp = torch.nn.Sequential(
@@ -75,13 +75,13 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
             torch.tensor(0.01)
         )
 
-    def velocity_model(self, h, v):
+    def _velocity_model(self, h, v):
         m = self.velocity_mlp(h)
         v = m.exp() * v
         log_det = m.sum((-1, -2)) * v.shape[-1]
         return v, log_det
 
-    def invert_velocity_model(self, h, v):
+    def _invert_velocity_model(self, h, v):
         m = self.velocity_mlp(h)
         v = (-m).exp() * v
         log_det = m.sum((-1, -2)) * v.shape[-1]
@@ -128,8 +128,8 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
         h_cat_ht = get_h_cat_h(h)
         x_minus_xt = get_x_minus_xt(x)
         delta_v = self.coordinate_model(x, x_minus_xt, h_cat_ht)
-        v = v - delta_v - self.lamb * x
-        v, log_det = self.invert_velocity_model(h, v)
+        v = v - delta_v # - self.lamb * x
+        v, log_det = self._invert_velocity_model(h, v)
         return x, v, log_det
 
     def f_forward(self, h, x, v):
@@ -140,8 +140,8 @@ class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
         h_cat_ht = get_h_cat_h(h)
         x_minus_xt = get_x_minus_xt(x)
         delta_v = self.coordinate_model(x, x_minus_xt, h_cat_ht)
-        v, log_det = self.velocity_model(h, v)
-        v = delta_v + v + self.lamb * x
+        v, log_det = self._velocity_model(h, v)
+        v = delta_v + v # + self.lamb * x
         # x = x + v
         # x, log_det_x = self.radial_expansion_model(h0, x, v)
         return x, v, log_det
@@ -188,11 +188,11 @@ class SAKEFlowModel(HamiltonianFlowModel):
         sum_log_det = 0.0
         for xv_layer, vx_layer in zip(self.xv_layers, self.vx_layers):
             x, v, log_det = xv_layer.f_forward(h, x, v)
-            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
 
-            v, x, log_det = vx_layer.f_forward(h, x, v)
-            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            v, x, log_det = vx_layer.f_forward(h, v, x)
+            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         return x, v, sum_log_det
 
@@ -200,12 +200,12 @@ class SAKEFlowModel(HamiltonianFlowModel):
         h = self.embedding_in(h)
         sum_log_det = 0.0
         for xv_layer, vx_layer in zip(self.xv_layers[::-1], self.vx_layers[::-1]):
-            x, v, log_det = xv_layer.f_backward(h, x, v)
-            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            v, x, log_det = vx_layer.f_backward(h, v, x)
+            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
 
-            v, x, log_det = vx_layer.f_backward(h, x, v)
-            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            x, v, log_det = xv_layer.f_backward(h, x, v)
+            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         return x, v, sum_log_det
 

@@ -188,9 +188,7 @@ class DenseSAKELayer(SAKELayer):
         h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
         h_e = self.aggregate(h_e_mtx, mask=mask)
         h = self.node_model(h, h_e, h_combinations)
-        if self.velocity:
-            return h, x, v
-        return h, x
+        return h, x, v
 
 class RecurrentDenseSAKELayer(DenseSAKELayer):
     def __init__(

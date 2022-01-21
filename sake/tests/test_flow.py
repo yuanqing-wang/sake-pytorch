@@ -36,16 +36,39 @@ def test_model_forward_backward_same(_equivariance_test_utils):
     import sake
     h0, x0, translation, rotation, reflection = _equivariance_test_utils
     v0 = torch.randn_like(x0)
-    model = sake.flow.SAKEFlowModel(7, 7, depth=2)
+    model = sake.flow.SAKEFlowModel(7, 7, depth=1)
 
-    v0 = v0 - v0.mean(dim=-2, keepdim=True)
-    x0 = x0 - x0.mean(dim=-2, keepdim=True)
+    # v0 = v0 - v0.mean(dim=-2, keepdim=True)
+    # x0 = x0 - x0.mean(dim=-2, keepdim=True)
     x1, v1, log_det_fwd = model.f_forward(h0, x0, v0)
     _x0, _v0, log_det_bwd = model.f_backward(h0, x1, v1)
 
     assert_almost_equal_tensor(_x0, x0, decimal=3)
     assert_almost_equal_tensor(_v0, v0, decimal=3)
     assert_almost_equal_tensor(log_det_fwd, log_det_bwd)
+
+def test_jit_layer(_equivariance_test_utils):
+    import torch
+    import sake
+    layer = sake.flow.SAKEFlowLayer(7, 7, 5)
+    layer.forward = layer.f_forward
+    layer = torch.jit.script(layer)
+
+    h0, x0, translation, rotation, reflection = _equivariance_test_utils
+    v0 = torch.randn_like(x0)
+    x1, v1, log_det_fwd = layer(h0, x0, v0)
+
+def test_jit_model(_equivariance_test_utils):
+    import torch
+    import sake
+    model = sake.flow.SAKEFlowModel(7, 7, depth=1)
+    model.forward = model.f_forward
+    model = torch.jit.script(model)
+
+    h0, x0, translation, rotation, reflection = _equivariance_test_utils
+    v0 = torch.randn_like(x0)
+    x1, v1, log_det_fwd = model.f_forward(h0, x0, v0)
+
 
 def test_layer_jacobian(_equivariance_test_utils):
     import torch
