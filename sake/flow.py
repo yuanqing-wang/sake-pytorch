@@ -1,6 +1,7 @@
 import abc
 import torch
 from .layers import DenseSAKELayer
+from .models import VelocityDenseSAKEModel
 from .functional import (
     get_x_minus_xt,
     get_x_minus_xt_norm,
@@ -39,112 +40,77 @@ class HamiltonianFlowModel(torch.nn.Module, abc.ABC):
     # def loss(self, z, *args, **kwargs):
     #     raise NotImplementedError
 
-class SAKEFlowLayer(DenseSAKELayer, HamiltonianFlowLayer):
-    def __init__(self, *args, **kwargs):
-        kwargs['update_coordinate'] = True
-        kwargs['velocity'] = True
-        kwargs['in_features'] = kwargs['in_features'] + 1 if 'in_features' in kwargs else args[0] + 1
-        kwargs['out_features'] = kwargs['out_features'] + 1 if 'out_features' in kwargs else args[1] + 1
-        if 'hidden_features' not in kwargs: kwargs['hidden_features'] = args[2]
-        super().__init__(**kwargs)
-        self.steps = 4
+class VelocityDenseSAKEModelWithHistory(VelocityDenseSAKEModel):
+    def forward(self, h, x):
+        xs = []
+        vs = []
+        h = self.embedding_in(h)
+        v = None
+        for idx, eq_layer in enumerate(self.eq_layers):
+            h, x, v = eq_layer(h, x, v)
+            xs.append(x)
+            vs.append(v)
+        xs = torch.stack(xs, dim=-1)
+        vs = torch.stack(vs, dim=-1)
+        h = self.embedding_out(h)
+        return h, xs, vs
 
-        # if update_coordinate:
-        self.coordinate_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2*self.in_features, self.hidden_features),
-            self.activation,
-            torch.nn.Linear(self.hidden_features, 1, bias=False),
+class SAKEFlowLayer(HamiltonianFlowLayer):
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features: int,
+        depth: int=2,
+        activation: Callable=torch.nn.SiLU(),
+    ):
+        super().__init__()
+        self.sake_model = VelocityDenseSAKEModelWithHistory(
+            in_features=in_features+1,
+            out_features=hidden_features,
+            hidden_features=hidden_features,
+            activation=activation,
+            depth=depth,
+            distance_filter=ContinuousFilterConvolutionWithConcatenation,
+            update_coordinate=True,
+            tanh=True,
+        )
+
+        self.scale_mlp = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, 1),
             torch.nn.Tanh(),
         )
 
-        # self.radial_expansion_mlp = torch.nn.Sequential(
-        #     torch.nn.Linear(self.in_features, self.hidden_features),
-        #     self.activation,
-        #     torch.nn.Linear(self.hidden_features, 1, bias=False),
-        #     torch.nn.Tanh(),
-        # )
-
-        self.velocity_mlp = torch.nn.Sequential(
-            torch.nn.Linear(self.in_features, self.hidden_features),
-            self.activation,
-            torch.nn.Linear(self.hidden_features, 1, bias=False),
-            torch.nn.Tanh(),
-        )
-
-        self.lamb = torch.nn.Parameter(
-            torch.tensor(0.01)
-        )
-
-    def _velocity_model(self, h, v):
-        m = self.velocity_mlp(h)
-        v = m.exp() * v
-        log_det = m.sum((-1, -2)) * v.shape[-1]
-        return v, log_det
-
-    def _invert_velocity_model(self, h, v):
-        m = self.velocity_mlp(h)
-        v = (-m).exp() * v
-        log_det = m.sum((-1, -2)) * v.shape[-1]
-        return v, log_det
-
-    # def radial_expansion_model(self, h, x, v):
-    #     m = self.radial_expansion_mlp(
-    #         torch.cat([h, v.pow(2).sum(dim=-1, keepdim=True)], dim=-1)
-    #     )
-    #     x = m.exp() * x
-    #     log_det = m.sum((-1, -2)) * x.shape[-1]
-    #     return x, log_det
-    #
-    # def invert_radial_expansion_model(self, h, x, v):
-    #     m = self.radial_expansion_mlp(
-    #         torch.cat([h, v.pow(2).sum(dim=-1, keepdim=True)], dim=-1)
-    #     )
-    #     x = (-m).exp() * x
-    #     log_det = m.sum((-1, -2)) * x.shape[-1]
-    #     return x, log_det
+        self.translation_mixing = torch.nn.Linear(2*depth, 1, bias=False)
 
     def mp(self, h, x):
+        h = torch.cat([h, x.pow(2).sum(-1, keepdim=True)], dim=-1)
         h = torch.cat([h, torch.zeros_like(h[..., -1, :].unsqueeze(-2))], dim=-2)
         x = torch.cat([x, torch.zeros_like(x[..., -1, :]).unsqueeze(-2)], dim=-2)
-        x_minus_xt = get_x_minus_xt(x)
-        x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
-        h_cat_ht = get_h_cat_h(h)
-        h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
-        h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm)
-        combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
-        h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
-        h_e = self.aggregate(h_e_mtx)
-        h = self.node_model(h, h_e, h_combinations)
+        h, xs, vs = self.sake_model(h, x)
+        xs = xs[..., :-1, :, :]
+        vs = vs[..., :-1, :, :]
         h = h[..., :-1, :]
-        return h
 
-    def f_backward(self, h, x, v):
-        # x, log_det_x = self.invert_radial_expansion_model(h, x, v)
-        # x = x - v
-        h = torch.cat([h, x.pow(2).sum(-1, keepdim=True)], dim=-1)
-        # h = torch.cat([h, torch.zeros_like(x.pow(2).sum(-1, keepdim=True))], dim=-1)
-        for _ in range(self.steps):
-            h = self.mp(h, x)
-        h_cat_ht = get_h_cat_h(h)
-        x_minus_xt = get_x_minus_xt(x)
-        delta_v = self.coordinate_model(x, x_minus_xt, h_cat_ht)
-        v = v - delta_v # - self.lamb * x
-        v, log_det = self._invert_velocity_model(h, v)
-        return x, v, log_det
+        xs_and_vs = torch.cat([xs, vs], dim=-1)
+        translation = self.translation_mixing(xs_and_vs).squeeze(-1)
+        scale = self.scale_mlp(h)
+        return scale, translation
 
     def f_forward(self, h, x, v):
-        h = torch.cat([h, x.pow(2).sum(-1, keepdim=True)], dim=-1)
-        #  = torch.cat([h, torch.zeros_like(x.pow(2).sum(-1, keepdim=True))], dim=-1)
-        for _ in range(self.steps):
-            h = self.mp(h, x)
-        h_cat_ht = get_h_cat_h(h)
-        x_minus_xt = get_x_minus_xt(x)
-        delta_v = self.coordinate_model(x, x_minus_xt, h_cat_ht)
-        v, log_det = self._velocity_model(h, v)
-        v = delta_v + v # + self.lamb * x
-        # x = x + v
-        # x, log_det_x = self.radial_expansion_model(h0, x, v)
+        scale, translation = self.mp(h, x)
+        v = scale.exp() * v + translation
+        log_det = scale.sum((-1, -2)) * v.shape[-1]
         return x, v, log_det
+
+    def f_backward(self, h, x, v):
+        scale, translation = self.mp(h, x)
+        v = v - translation
+        v = (-scale).exp() * v
+        log_det = scale.sum((-1, -2)) * v.shape[-1]
+        return x, v, log_det
+
 
 class SAKEFlowModel(HamiltonianFlowModel):
     def __init__(
@@ -169,8 +135,6 @@ class SAKEFlowModel(HamiltonianFlowModel):
                 SAKEFlowLayer(
                     in_features=hidden_features,
                     hidden_features=hidden_features,
-                    out_features=hidden_features,
-                    distance_filter=ContinuousFilterConvolutionWithConcatenation,
                 )
             )
 
@@ -178,8 +142,6 @@ class SAKEFlowModel(HamiltonianFlowModel):
                 SAKEFlowLayer(
                     in_features=hidden_features,
                     hidden_features=hidden_features,
-                    out_features=hidden_features,
-                    distance_filter=ContinuousFilterConvolutionWithConcatenation,
                 )
             )
 
@@ -214,3 +176,41 @@ class SAKEFlowModel(HamiltonianFlowModel):
         nll_x = -x_prior.log_prob(x).mean()
         nll_v = -v_prior.log_prob(v).mean()
         return nll_x + nll_v + sum_log_det.mean()
+
+class CenteredGaussian(torch.distributions.Normal):
+    def __init__(self, scale=1.0):
+        super().__init__(loc=0.0, scale=scale)
+        self.device = "cpu"
+
+    def to(self, device):
+        self.loc = self.loc.to(device)
+        self.scale = self.scale.to(device)
+        self.device = device
+        return self
+
+    def cuda(self):
+        return self.to("cuda:0")
+
+    def cpu(self):
+        return self.to("cpu")
+
+    def log_prob(self, value):
+        N = value.shape[-2]
+        D = value.shape[-1]
+        degrees_of_freedom = (N-1) * D
+        r2 = value.pow(2).flatten(-2, -1).sum(dim=-1) / self.scale.pow(2)
+        log_normalizing_constant = -0.5 * degrees_of_freedom * math.log(2*math.pi)
+        log_px = -0.5 * r2 + log_normalizing_constant
+        return log_px
+
+    def sample(self, *args, **kwargs):
+        x = super().sample(*args, **kwargs)
+        x = x - x.mean(dim=-2, keepdim=True)
+        x = x.to(self.device)
+        return x
+
+    def rsample(self, *args, **kwargs):
+        x = super().rsample(*args, **kwargs)
+        x = x - x.mean(dim=-2, keepdim=True)
+        x = x.to(self.device)
+        return x

@@ -2,27 +2,28 @@ import pytest
 import numpy.testing as npt
 from sake.utils import assert_almost_equal_tensor
 
-def test_mp_invariant(_equivariance_test_utils):
+def test_mp_eqvariant(_equivariance_test_utils):
     import torch
     import sake
     h0, x0, translation, rotation, reflection = _equivariance_test_utils
-    layer = sake.flow.SAKEFlowLayer(7, 7, 5)
-    h0 = torch.cat([h0, x0.pow(2).sum(-1, keepdim=True)], dim=-1)
-    h_original = layer.mp(h0, x0)
-    # h_translation = layer.mp(h0, translation(x0))
-    h_rotation = layer.mp(h0, rotation(x0))
-    h_reflection = layer.mp(h0, reflection(x0))
+    layer = sake.flow.SAKEFlowLayer(7, 7)
+    h_original, s_original = layer.mp(h0, x0)
+    h_rotation, s_rotation = layer.mp(h0, rotation(x0))
+    h_reflection, s_reflection = layer.mp(h0, reflection(x0))
 
     # assert_almost_equal_tensor(h_translation, h_original, decimal=3)
     assert_almost_equal_tensor(h_rotation, h_original, decimal=3)
     assert_almost_equal_tensor(h_reflection, h_original, decimal=3)
+
+    assert_almost_equal_tensor(s_rotation, rotation(s_original), decimal=3)
+    assert_almost_equal_tensor(s_reflection, reflection(s_original), decimal=3)
 
 def test_layer_forward_backward_same(_equivariance_test_utils):
     import torch
     import sake
     h0, x0, translation, rotation, reflection = _equivariance_test_utils
     v0 = torch.randn_like(x0)
-    layer = sake.flow.SAKEFlowLayer(7, 7, 5)
+    layer = sake.flow.SAKEFlowLayer(7, 7)
 
     x1, v1, log_det_fwd = layer.f_forward(h0, x0, v0)
     _x0, _v0, log_det_bwd = layer.f_backward(h0, x1, v1)

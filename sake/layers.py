@@ -34,6 +34,7 @@ class SAKELayer(torch.nn.Module):
         n_coefficients: int=32,
         n_heads: int=4,
         velocity: bool=False,
+        tanh: bool=False,
     ):
         super().__init__()
 
@@ -60,6 +61,14 @@ class SAKELayer(torch.nn.Module):
             activation,
             torch.nn.Linear(hidden_features, 1, bias=False),
         )
+
+        if tanh:
+            self.coordinate_mlp = torch.nn.Sequential(
+                torch.nn.Linear(hidden_features, hidden_features),
+                activation,
+                torch.nn.Linear(hidden_features, 1, bias=False),
+                torch.nn.Tanh(),
+            )
 
         self.velocity_mlp = torch.nn.Sequential(
             torch.nn.Linear(in_features, hidden_features),

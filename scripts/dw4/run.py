@@ -32,6 +32,7 @@ def run():
         optimizer.zero_grad()
         v = v_prior.sample(x.shape)
         loss = model.nll_backward(h, x, v, x_prior, v_prior)
+        print(loss.item(), (loss+v_prior.log_prob(v).mean()).item())
         loss.backward()
         optimizer.step()
 

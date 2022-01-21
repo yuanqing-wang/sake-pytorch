@@ -67,7 +67,6 @@ class VelocityDenseSAKEModel(torch.nn.Module):
         depth: int=4,
         layer: torch.nn.Module=DenseSAKELayer,
         activation: Callable=torch.nn.SiLU(),
-        batch_norm: bool=False,
         update_coordinate: Union[List, bool]=False,
         *args, **kwargs,
     ):
@@ -83,7 +82,6 @@ class VelocityDenseSAKEModel(torch.nn.Module):
         )
         self.activation = activation
         self.depth = depth
-        self.batch_norm = batch_norm
         self.eq_layers = torch.nn.ModuleList()
 
         if isinstance(update_coordinate, bool):
@@ -107,7 +105,6 @@ class VelocityDenseSAKEModel(torch.nn.Module):
         for idx, eq_layer in enumerate(self.eq_layers):
             h, x, v = eq_layer(h, x, v, mask=mask)
         h = self.embedding_out(h)
-
         return h, x
 
 #
