@@ -18,6 +18,22 @@ def test_mp_eqvariant(_equivariance_test_utils):
     assert_almost_equal_tensor(s_rotation, rotation(s_original), decimal=3)
     assert_almost_equal_tensor(s_reflection, reflection(s_original), decimal=3)
 
+def test_layer_center(_equivariance_test_utils):
+    import torch
+    import sake
+    h0, x0, translation, rotation, reflection = _equivariance_test_utils
+    v0 = torch.randn_like(x0)
+    layer = sake.flow.SAKEFlowLayer(7, 7)
+
+    x0 = x0 - x0.mean(dim=-2, keepdim=True)
+    v0 = v0 - v0.mean(dim=-2, keepdim=True)
+
+    x1, v1, log_det_fwd = layer.f_forward(h0, x0, v0)
+    _x0, _v0, log_det_bwd = layer.f_backward(h0, x1, v1)
+
+    assert_almost_equal_tensor(x1.mean(dim=-2), torch.zeros_like(x1.mean(dim=-2)), decimal=3)
+    assert_almost_equal_tensor(v1.mean(dim=-2), torch.zeros_like(v1.mean(dim=-2)), decimal=3)
+
 def test_layer_forward_backward_same(_equivariance_test_utils):
     import torch
     import sake
@@ -37,16 +53,32 @@ def test_model_forward_backward_same(_equivariance_test_utils):
     import sake
     h0, x0, translation, rotation, reflection = _equivariance_test_utils
     v0 = torch.randn_like(x0)
-    model = sake.flow.SAKEFlowModel(7, 7, depth=1)
+    model = sake.flow.SAKEFlowModel(7, 7, depth=4)
 
-    # v0 = v0 - v0.mean(dim=-2, keepdim=True)
-    # x0 = x0 - x0.mean(dim=-2, keepdim=True)
+    v0 = v0 - v0.mean(dim=-2, keepdim=True)
+    x0 = x0 - x0.mean(dim=-2, keepdim=True)
     x1, v1, log_det_fwd = model.f_forward(h0, x0, v0)
     _x0, _v0, log_det_bwd = model.f_backward(h0, x1, v1)
 
     assert_almost_equal_tensor(_x0, x0, decimal=3)
     assert_almost_equal_tensor(_v0, v0, decimal=3)
     assert_almost_equal_tensor(log_det_fwd, log_det_bwd)
+
+def test_model_center(_equivariance_test_utils):
+    import torch
+    import sake
+    h0, x0, translation, rotation, reflection = _equivariance_test_utils
+    v0 = torch.randn_like(x0)
+    model = sake.flow.SAKEFlowModel(7, 7, depth=4)
+
+    x0 = x0 - x0.mean(dim=-2, keepdim=True)
+    v0 = v0 - v0.mean(dim=-2, keepdim=True)
+
+    x1, v1, log_det_fwd = model.f_forward(h0, x0, v0)
+    _x0, _v0, log_det_bwd = model.f_backward(h0, x1, v1)
+
+    assert_almost_equal_tensor(x1.mean(dim=-2), torch.zeros_like(x1.mean(dim=-2)), decimal=3)
+    assert_almost_equal_tensor(v1.mean(dim=-2), torch.zeros_like(v1.mean(dim=-2)), decimal=3)
 
 def test_jit_layer(_equivariance_test_utils):
     import torch
