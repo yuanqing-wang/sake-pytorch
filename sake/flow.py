@@ -71,10 +71,10 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
             depth=depth,
             distance_filter=ContinuousFilterConvolutionWithConcatenation,
             update_coordinate=True,
-            tanh=False,
+            tanh=True,
         )
 
-        self.translation_mixing = torch.nn.Parameter(torch.randn(2 * depth + 1, 1))
+        self.translation_mixing = torch.nn.Parameter(torch.ones(2 * depth + 1, 1) * 0.1)
         self.scale_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
             torch.nn.Tanh(),
@@ -94,6 +94,7 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
 
         xs_and_vs = torch.cat([xs, vs], dim=-1)
         translation = (xs_and_vs @ self.translation_mixing).squeeze(-1)
+        translation = translation - translation.mean(dim=-2, keepdim=True)
         scale = self.scale_mlp(h).mean(dim=-2, keepdim=True)
 
         return scale, translation
@@ -169,11 +170,11 @@ class SAKEFlowModel(HamiltonianFlowModel):
         sum_log_det = 0.0
         for xv_layer, vx_layer in zip(self.xv_layers[::-1], self.vx_layers[::-1]):
             v, x, log_det = vx_layer.f_backward(h, v, x)
-            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
 
             x, v, log_det = xv_layer.f_backward(h, x, v)
-            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         return x, v, sum_log_det
 
