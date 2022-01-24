@@ -156,7 +156,7 @@ class DenseSAKELayer(SAKELayer):
         att = self.semantic_attention_mlp(h_e_mtx)
 
         # (batch_size, n, n, n_heads)
-        att = att.view(*att.shape[:-1], self.n_heads)
+        # att = att.view(*att.shape[:-1], self.n_heads)
         att = att - 1e5* torch.eye(
             att.shape[-2],
             att.shape[-2],
@@ -199,7 +199,7 @@ class DenseSAKELayer(SAKELayer):
             if v is not None and self.velocity:
                 v = self.velocity_model(v, h)
             else:
-                v = 0.0
+                v = torch.zeros_like(x)
 
             v = delta_v + v
             x = x + v
@@ -212,9 +212,10 @@ class DenseSAKELayer(SAKELayer):
         h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
         h_e = self.aggregate(h_e_mtx, mask=mask)
         h = self.node_model(h, h_e, h_combinations, h_combinations_v)
-        if self.velocity:
-            return h, x, v
-        return h, x
+        # if self.velocity:
+        #     return h, x, v
+        # return h, x
+        return h, x, v
 
 class RecurrentDenseSAKELayer(DenseSAKELayer):
     def __init__(
