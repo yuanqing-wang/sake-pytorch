@@ -26,15 +26,42 @@ def run():
     x = data_train
     x_prior = CenteredGaussian()
     v_prior = CenteredGaussian()
-    optimizer = torch.optim.Adam(model.parameters(), 1e-5)
 
-    for _ in range(10000):
+    if torch.cuda.is_available():
+        h = h.cuda()
+        x = x.cuda()
+        x_prior = x_prior.cuda()
+        v_prior = v_prior.cuda()
+        model = model.cuda()
+
+    optimizer = torch.optim.Adam(model.parameters(), 1e-4, weight_decay=1e-12)
+
+    for idx_epoch in range(20000):
         optimizer.zero_grad()
         v = v_prior.sample(x.shape)
         loss = model.nll_backward(h, x, v, x_prior, v_prior)
-        print(loss.item(), (loss+v_prior.log_prob(v).mean()).item())
         loss.backward()
         optimizer.step()
+
+        if idx_epoch % 100 == 0:
+            x = data_val
+            h = torch.zeros(x.shape[0], 4, 1)
+            if torch.cuda.is_available():
+                h = h.cuda()
+                x = x.cuda()
+            v = v_prior.sample(x.shape)
+            loss_vl = model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()
+
+            x = data_test
+            h = torch.zeros(x.shape[0], 4, 1)
+            v = v_prior.sample(x.shape)
+            if torch.cuda.is_available():
+                h = h.cuda()
+                x = x.cuda()
+            loss_te = model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()
+
+            print(idx_epoch, "vl: %.4f, te: %.4f" % (loss_vl, loss_te))
+
 
 
 if __name__ == "__main__":
