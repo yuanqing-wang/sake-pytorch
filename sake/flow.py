@@ -59,7 +59,7 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
         self,
         in_features: int,
         hidden_features: int,
-        depth: int=2,
+        depth: int=4,
         activation: Callable=torch.nn.SiLU(),
     ):
         super().__init__()
@@ -74,7 +74,13 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
             tanh=True,
         )
 
-        self.translation_mixing = torch.nn.Parameter(torch.ones(2 * depth + 1, 1) * 0.1)
+        self.translation_mlp = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.Tanh(),
+            torch.nn.Linear(hidden_features, 2*depth+1),
+            torch.nn.Tanh(),
+        )
+
         self.scale_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
             torch.nn.Tanh(),
@@ -93,10 +99,9 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
         h = h[..., :-1, :]
 
         xs_and_vs = torch.cat([xs, vs], dim=-1)
-        translation = (xs_and_vs @ self.translation_mixing).squeeze(-1)
-        translation = translation - translation.mean(dim=-2, keepdim=True)
+        xs_and_vs = xs_and_vs - xs_and_vs.mean(dim=-3, keepdim=True)
+        translation = (self.translation_mlp(h).unsqueeze(-2).mean(dim=-3, keepdim=True) * xs_and_vs).sum(dim=-1)
         scale = self.scale_mlp(h).mean(dim=-2, keepdim=True)
-
         return scale, translation
 
     def f_forward(self, h, x, v):
@@ -118,7 +123,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
             in_features: int,
             hidden_features: int,
             depth: int=4,
-            mp_depth: int=3,
+            mp_depth: int=4,
             activation: Callable=torch.nn.SiLU(),
         ):
         super().__init__()
@@ -170,11 +175,9 @@ class SAKEFlowModel(HamiltonianFlowModel):
         sum_log_det = 0.0
         for xv_layer, vx_layer in zip(self.xv_layers[::-1], self.vx_layers[::-1]):
             v, x, log_det = vx_layer.f_backward(h, v, x)
-            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
 
             x, v, log_det = xv_layer.f_backward(h, x, v)
-            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         return x, v, sum_log_det
 
@@ -182,9 +185,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
         x, v, sum_log_det = self.f_backward(h, x, v)
         nll_x = -x_prior.log_prob(x).mean()
         nll_v = -v_prior.log_prob(v).mean()
-        print(x[0], v[0], sum_log_det[0])
         return nll_x + nll_v + sum_log_det.mean()
-
 
 class CenteredGaussian(torch.distributions.Normal):
     def __init__(self, scale=1.0):
