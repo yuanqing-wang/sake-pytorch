@@ -61,6 +61,7 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
         hidden_features: int,
         depth: int=4,
         activation: Callable=torch.nn.SiLU(),
+        clip: bool=False,
     ):
         super().__init__()
         self.sake_model = VelocityDenseSAKEModelWithHistory(
@@ -88,6 +89,7 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
             torch.nn.Tanh(),
         )
 
+        self.clip = clip
 
     def mp(self, h, x):
         h = torch.cat([h, x.pow(2).sum(-1, keepdim=True)], dim=-1)
@@ -101,10 +103,13 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
         translation = torch.cat([xs, vs], dim=-1)
         translation = translation - translation.mean(dim=-3, keepdim=True)
         translation_norm = translation.norm(dim=(-2, -3), keepdim=True)
-        # max_translation_norm = translation.shape[-2] * translation.shape[-1] * 1.0
-        # clipped_translation_norm = torch.clip(translation_norm, max=max_translation_norm)
-        # norm_scaling = clipped_translation_norm / (translation_norm + 1e-10)
-        norm_scaling = 1.0 / (translation_norm + 1e-10)
+        if self.clip:
+            max_translation_norm = translation.shape[-2] * translation.shape[-1] * 1.0
+            clipped_translation_norm = torch.clip(translation_norm, max=max_translation_norm)
+            norm_scaling = clipped_translation_norm / (translation_norm + 1e-10)
+        else:
+            norm_scaling = 1.0 / (translation_norm + 1e-10)
+
         translation = translation * norm_scaling
         # translation = translation / (translation_norm + 1e-10)
 
@@ -136,6 +141,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
             depth: int=4,
             mp_depth: int=4,
             activation: Callable=torch.nn.SiLU(),
+            clip: bool=False,
         ):
         super().__init__()
         self.depth = depth
@@ -157,6 +163,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     depth=mp_depth,
+                    clip=clip,
                 )
             )
 
@@ -165,6 +172,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
                     in_features=hidden_features,
                     hidden_features=hidden_features,
                     depth=mp_depth,
+                    clip=clip,
                 )
             )
 
