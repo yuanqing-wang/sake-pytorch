@@ -98,18 +98,19 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
         vs = vs[..., :-1, :, :]
         h = h[..., :-1, :]
 
-        xs_and_vs = torch.cat([xs, vs], dim=-1)
-        # xs_and_vs = xs_and_vs - xs_and_vs.mean(dim=-3, keepdim=True)
+        translation = torch.cat([xs, vs], dim=-1)
+        translation = translation - translation.mean(dim=-3)
+        translation_norm = translation.norm(dim=(-2, -3), keepdim=True)
+        # max_translation_norm = translation.shape[-2] * translation.shape[-1] * 1.0
+        # clipped_translation_norm = torch.clip(translation_norm, max=max_translation_norm)
+        # norm_scaling = clipped_translation_norm / (translation_norm + 1e-10)
+        norm_scaling = 1.0 / (translation_norm + 1e-10)
+        translation = translation * norm_scaling
+        # translation = translation / (translation_norm + 1e-10)
 
         # (n_batch, n_atoms, 3)
-        translation = (self.translation_mlp(h).unsqueeze(-2) * xs_and_vs).sum(dim=-1)
+        translation = (self.translation_mlp(h).unsqueeze(-2) * translation).sum(dim=-1)
         translation = translation - translation.mean(dim=-2, keepdim=True)
-
-        translation_norm = translation.norm(dim=(-1, -2), keepdim=True)
-        max_translation_norm = translation.shape[-2] * 1.0
-        clipped_translation_norm = torch.clip(translation_norm, max=max_translation_norm)
-        norm_scaling = clipped_translation_norm / (translation_norm + 1e-10)
-        translation_norm = translation_norm * norm_scaling
 
         scale = self.scale_mlp(h).mean(dim=-2, keepdim=True)
         return scale, translation
