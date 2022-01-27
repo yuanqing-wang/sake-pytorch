@@ -39,6 +39,7 @@ class HamiltonianFlowModel(torch.nn.Module, abc.ABC):
     # @abc.abstractmethod
     # def loss(self, z, *args, **kwargs):
     #     raise NotImplementedError
+
 class VelocityDenseSAKEModelWithHistory(VelocityDenseSAKEModel):
     def forward(self, h, x):
         xs = [x]
@@ -72,19 +73,19 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
             depth=depth,
             distance_filter=ContinuousFilterConvolutionWithConcatenation,
             update_coordinate=True,
-            tanh=True,
+            # tanh=True,
         )
 
         self.translation_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
-            torch.nn.Tanh(),
+            torch.nn.SiLU(),
             torch.nn.Linear(hidden_features, 2*depth+1),
             torch.nn.Tanh(),
         )
 
         self.scale_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
-            torch.nn.Tanh(),
+            torch.nn.SiLU(),
             torch.nn.Linear(hidden_features, 1),
             torch.nn.Tanh(),
         )
@@ -104,7 +105,7 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
         translation = translation - translation.mean(dim=-3, keepdim=True)
         translation_norm = translation.norm(dim=(-2, -3), keepdim=True)
         if self.clip:
-            max_translation_norm = translation.shape[-2] * translation.shape[-1] * 1.0
+            max_translation_norm = translation.shape[-2] * translation.shape[-3] * 1.0
             clipped_translation_norm = torch.clip(translation_norm, max=max_translation_norm)
             norm_scaling = clipped_translation_norm / (translation_norm + 1e-10)
         else:
@@ -142,6 +143,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
             mp_depth: int=4,
             activation: Callable=torch.nn.SiLU(),
             clip: bool=False,
+            log_gamma: float=0.0,
         ):
         super().__init__()
         self.depth = depth
@@ -151,6 +153,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
             torch.nn.Linear(hidden_features, hidden_features),
         )
 
+        self.log_gamma = torch.nn.Parameter(torch.tensor(log_gamma))
         self.xv_layers = torch.nn.ModuleList()
         self.vx_layers = torch.nn.ModuleList()
         for _ in range(depth):
@@ -181,22 +184,27 @@ class SAKEFlowModel(HamiltonianFlowModel):
         sum_log_det = 0.0
         for xv_layer, vx_layer in zip(self.xv_layers, self.vx_layers):
             x, v, log_det = xv_layer.f_forward(h, x, v)
-            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
 
             v, x, log_det = vx_layer.f_forward(h, v, x)
-            # x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
+        x = x * self.log_gamma
         return x, v, sum_log_det
 
     def f_backward(self, h, x, v):
         h = self.embedding_in(h)
         sum_log_det = 0.0
+        x = x * (-self.log_gamma).exp()
+        sum_log_det = sum_log_det - self.log_gamma
         for xv_layer, vx_layer in zip(self.xv_layers[::-1], self.vx_layers[::-1]):
             v, x, log_det = vx_layer.f_backward(h, v, x)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
 
             x, v, log_det = xv_layer.f_backward(h, x, v)
+            x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         return x, v, sum_log_det
 
