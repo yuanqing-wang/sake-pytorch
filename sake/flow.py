@@ -104,7 +104,7 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
         translation = translation - translation.mean(dim=-3, keepdim=True)
         translation_norm = translation.norm(dim=(-2, -3), keepdim=True)
         if self.clip:
-            max_translation_norm = translation.shape[-2] * translation.shape[-1] * 1.0
+            max_translation_norm = translation.shape[-2] * translation.shape[-3] * 1.0
             clipped_translation_norm = torch.clip(translation_norm, max=max_translation_norm)
             norm_scaling = clipped_translation_norm / (translation_norm + 1e-10)
         else:
