@@ -190,14 +190,15 @@ class SAKEFlowModel(HamiltonianFlowModel):
             v, x, log_det = vx_layer.f_forward(h, v, x)
             x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
-        x = x * self.log_gamma
+        sum_log_det = sum_log_det + self.log_gamma
+        x = x * self.log_gamma.exp()
         return x, v, sum_log_det
 
     def f_backward(self, h, x, v):
         h = self.embedding_in(h)
         sum_log_det = 0.0
         x = x * (-self.log_gamma).exp()
-        sum_log_det = sum_log_det - self.log_gamma
+        sum_log_det = sum_log_det + self.log_gamma
         for xv_layer, vx_layer in zip(self.xv_layers[::-1], self.vx_layers[::-1]):
             v, x, log_det = vx_layer.f_backward(h, v, x)
             x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
