@@ -101,11 +101,16 @@ class VelocityDenseSAKEModel(torch.nn.Module):
                 )
             )
 
-    def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
+    def forward(
+            self, 
+            h, x, 
+            mask: Union[None, torch.Tensor]=None, 
+            v: Union[None, torch.Tensor]=None,
+            h_e_0: Union[None, torch.Tensor]=None,
+        ):
         h = self.embedding_in(h)
-        v = None
         for idx, eq_layer in enumerate(self.eq_layers):
-            h, x, v = eq_layer(h, x, v, mask=mask)
+            h, x, v = eq_layer(h, x, v, mask=mask, h_e_0=h_e_0)
         h = self.embedding_out(h)
 
         return h, x

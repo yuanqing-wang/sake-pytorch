@@ -33,36 +33,56 @@ class SAKELayer(torch.nn.Module):
         attention: bool=True,
         n_coefficients: int=32,
         n_heads: int=4,
+        edge_features: int=0,
         velocity: bool=False,
+        tanh: bool=False,
     ):
         super().__init__()
 
-        self.edge_model = distance_filter(2*in_features, hidden_features)
+        self.edge_model = distance_filter(2*in_features+edge_features, hidden_features)
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(n_heads * hidden_features + hidden_features + in_features, hidden_features),
+            torch.nn.Linear(n_heads * hidden_features + 2 * hidden_features + in_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, out_features),
         )
 
         self.residual = residual
+        self.edge_features = edge_features
         self.update_coordinate = update_coordinate
         self.velocity = velocity
         # if update_coordinate:
-        self.coordinate_mlp = torch.nn.Sequential(
-            torch.nn.Linear(hidden_features, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, 1, bias=False),
-        )
+        if tanh:
+            self.coordinate_mlp = torch.nn.Sequential(
+                torch.nn.Linear(hidden_features, hidden_features),
+                activation,
+                torch.nn.Linear(hidden_features, 1, bias=False),
+                torch.nn.Tanh(),
+            )
 
-        self.velocity_mlp = torch.nn.Sequential(
-            torch.nn.Linear(in_features, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, 1, bias=False),
-        )
+            self.velocity_mlp = torch.nn.Sequential(
+                torch.nn.Linear(in_features, hidden_features),
+                activation,
+                torch.nn.Linear(hidden_features, 1, bias=False),
+                torch.nn.Tanh(),
+            )
 
-        torch.nn.init.xavier_uniform_(self.coordinate_mlp[2].weight, gain=0.001)
-        torch.nn.init.xavier_uniform_(self.velocity_mlp[2].weight, gain=0.001)
+        else:
+
+            self.coordinate_mlp = torch.nn.Sequential(
+                torch.nn.Linear(hidden_features, hidden_features),
+                activation,
+                torch.nn.Linear(hidden_features, 1, bias=False),
+            )
+
+            self.velocity_mlp = torch.nn.Sequential(
+                torch.nn.Linear(in_features, hidden_features),
+                activation,
+                torch.nn.Linear(hidden_features, 1, bias=False),
+            )
+
+            torch.nn.init.xavier_uniform_(self.coordinate_mlp[2].weight, gain=0.001)
+            torch.nn.init.xavier_uniform_(self.velocity_mlp[2].weight, gain=0.001)
 
         self.semantic_attention_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, n_heads),
@@ -76,6 +96,18 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.post_norm_mlp = torch.nn.Sequential(
+            torch.nn.Linear(n_coefficients, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+
+        self.coefficients_mlp_v = torch.nn.Sequential(
+            torch.nn.Linear(hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, n_coefficients),
+        )
+
+        self.post_norm_mlp_v = torch.nn.Sequential(
             torch.nn.Linear(n_coefficients, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
@@ -111,8 +143,8 @@ class DenseSAKELayer(SAKELayer):
         h_e = h_e_mtx.sum(dim=-2)
         return h_e
 
-    def node_model(self, h, h_e, h_combinations):
-        out = torch.cat([h, h_e, h_combinations], dim=-1)
+    def node_model(self, h, h_e, h_combinations, h_combinations_v):
+        out = torch.cat([h, h_e, h_combinations, h_combinations_v], dim=-1)
         out = self.node_mlp(out)
         if self.residual:
             out = h + out
@@ -142,7 +174,7 @@ class DenseSAKELayer(SAKELayer):
         att = self.semantic_attention_mlp(h_e_mtx)
 
         # (batch_size, n, n, n_heads)
-        att = att.view(*att.shape[:-1], self.n_heads)
+        # att = att.view(*att.shape[:-1], self.n_heads)
         att = att - 1e5* torch.eye(
             att.shape[-2],
             att.shape[-2],
@@ -161,30 +193,47 @@ class DenseSAKELayer(SAKELayer):
         v = self.velocity_mlp(h) * v
         return v
 
-    def forward(self, h, x, v: Union[None, torch.Tensor]=None, mask: Union[None, torch.Tensor]=None):
+    def forward(
+            self, 
+            h: torch.Tensor, 
+            x: torch.Tensor, 
+            v: Union[None, torch.Tensor]=None, 
+            mask: Union[None, torch.Tensor]=None, 
+            h_e_0: Union[None, torch.Tensor]=None,
+        ):
         x_minus_xt = get_x_minus_xt(x)
         x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
         h_cat_ht = get_h_cat_h(h)
+        
+        if self.edge_features > 0 and h_e_0 is not None:
+            h_cat_ht = torch.cat([h_cat_ht, h_e_0], dim=-1)
+
+
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
+        h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
+
         if self.update_coordinate:
             delta_v = self.coordinate_model(x, x_minus_xt, h_e_mtx)
 
             if v is not None and self.velocity:
                 v = self.velocity_model(v, h)
             else:
-                v = 0.0
+                v = torch.zeros_like(x)
 
             v = delta_v + v
             x = x + v
 
-        h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
+        v_minus_vt = get_x_minus_xt(x)
+        v_minus_vt_norm = get_x_minus_xt_norm(x_minus_xt=v_minus_vt)
+        h_combinations_v = self.spatial_attention(h_e_mtx, v_minus_vt, v_minus_vt_norm, mask=mask)
         combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
         h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
         h_e = self.aggregate(h_e_mtx, mask=mask)
-        h = self.node_model(h, h_e, h_combinations)
-        if self.velocity:
-            return h, x, v
-        return h, x
+        h = self.node_model(h, h_e, h_combinations, h_combinations_v)
+        # if self.velocity:
+        #     return h, x, v
+        # return h, x
+        return h, x, v
 
 class RecurrentDenseSAKELayer(DenseSAKELayer):
     def __init__(
