@@ -192,6 +192,7 @@ class DenseSAKELayer(SAKELayer):
 
 
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
+        h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
 
         if self.update_coordinate:
             delta_v = self.coordinate_model(x, x_minus_xt, h_e_mtx)
@@ -207,7 +208,6 @@ class DenseSAKELayer(SAKELayer):
         v_minus_vt = get_x_minus_xt(x)
         v_minus_vt_norm = get_x_minus_xt_norm(x_minus_xt=v_minus_vt)
         h_combinations_v = self.spatial_attention(h_e_mtx, v_minus_vt, v_minus_vt_norm, mask=mask)
-        h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
         combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
         h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
         h_e = self.aggregate(h_e_mtx, mask=mask)
