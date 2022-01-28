@@ -21,8 +21,9 @@ def run(args):
     data_test = data_test - data_test.mean(dim=-2, keepdim=True)
 
     from sake.flow import SAKEFlowModel, CenteredGaussian
+    print(data_train.norm(dim=(-1, -2), keepdim=True).mean().log())
     model = SAKEFlowModel(
-            1, args.width, depth=args.depth, mp_depth=args.mp_depth, 
+            1, args.width, depth=args.depth, mp_depth=args.mp_depth,
             log_gamma=data_train.norm(dim=(-1, -2), keepdim=True).mean().log()
     )
 
@@ -51,6 +52,7 @@ def run(args):
             v = v_prior.sample(x.shape)
             loss = model.nll_backward(h, x, v, x_prior, v_prior)
             loss.backward()
+            print(loss + v_prior.log_prob(v).mean())
         optimizer.step()
 
         if idx_epoch % 1000 == 0:
@@ -81,7 +83,7 @@ def run(args):
                     x = x.cuda()
                 loss_te += (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
 
-            
+
             # loss_vl *= 0.1
             # loss_te *= 0.1
             print(idx_epoch, "tr: %.4f, vl: %.4f, te: %.4f" % (loss_tr, loss_vl, loss_te), flush=True)
