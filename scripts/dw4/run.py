@@ -82,8 +82,8 @@ def run(args):
                 loss_te += (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
 
             
-            # loss_vl *= 0.1
-            # loss_te *= 0.1
+            loss_vl *= 0.1
+            loss_te *= 0.1
             print(idx_epoch, "tr: %.4f, vl: %.4f, te: %.4f" % (loss_tr, loss_vl, loss_te), flush=True)
         torch.save(model, "sake_flow_dw4.th")
 
