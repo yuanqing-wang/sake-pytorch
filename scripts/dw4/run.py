@@ -41,7 +41,7 @@ def run(args):
     min_loss_te = 1000.0
 
     for idx_epoch in range(50000):
-        x = data_train# [idxs]
+        x = data_train[:10]
         x = x - x.mean(dim=-2, keepdim=True)
         h = torch.zeros(x.shape[0], 4, 1)
         if torch.cuda.is_available():
@@ -54,40 +54,41 @@ def run(args):
             loss.backward()
             print(loss + v_prior.log_prob(v).mean())
         optimizer.step()
-
-        if idx_epoch % 1000 == 0:
-            loss_vl = 0.0
-            loss_te = 0.0
-            for idx in range(10):
-                x = data_train
-                h = torch.zeros(x.shape[0], 4, 1)
-                if torch.cuda.is_available():
-                    h = h.cuda()
-                    x = x.cuda()
-                v = v_prior.sample(x.shape)
-                loss_tr = (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
-
-                x = data_val[100*idx:100*idx+100]
-                h = torch.zeros(x.shape[0], 4, 1)
-                if torch.cuda.is_available():
-                    h = h.cuda()
-                    x = x.cuda()
-                v = v_prior.sample(x.shape)
-                loss_vl += (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
-
-                x = data_test[100*idx:100*idx+100]
-                h = torch.zeros(x.shape[0], 4, 1)
-                v = v_prior.sample(x.shape)
-                if torch.cuda.is_available():
-                    h = h.cuda()
-                    x = x.cuda()
-                loss_te += (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
-
-
-            # loss_vl *= 0.1
-            # loss_te *= 0.1
-            print(idx_epoch, "tr: %.4f, vl: %.4f, te: %.4f" % (loss_tr, loss_vl, loss_te), flush=True)
-        torch.save(model, "sake_flow_dw4.th")
+        
+        #
+        # if idx_epoch % 1000 == 0:
+        #     loss_vl = 0.0
+        #     loss_te = 0.0
+        #     for idx in range(10):
+        #         x = data_train
+        #         h = torch.zeros(x.shape[0], 4, 1)
+        #         if torch.cuda.is_available():
+        #             h = h.cuda()
+        #             x = x.cuda()
+        #         v = v_prior.sample(x.shape)
+        #         loss_tr = (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
+        #
+        #         x = data_val[100*idx:100*idx+100]
+        #         h = torch.zeros(x.shape[0], 4, 1)
+        #         if torch.cuda.is_available():
+        #             h = h.cuda()
+        #             x = x.cuda()
+        #         v = v_prior.sample(x.shape)
+        #         loss_vl += (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
+        #
+        #         x = data_test[100*idx:100*idx+100]
+        #         h = torch.zeros(x.shape[0], 4, 1)
+        #         v = v_prior.sample(x.shape)
+        #         if torch.cuda.is_available():
+        #             h = h.cuda()
+        #             x = x.cuda()
+        #         loss_te += (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
+        #
+        #
+        #     # loss_vl *= 0.1
+        #     # loss_te *= 0.1
+        #     print(idx_epoch, "tr: %.4f, vl: %.4f, te: %.4f" % (loss_tr, loss_vl, loss_te), flush=True)
+        # torch.save(model, "sake_flow_dw4.th")
 
 if __name__ == "__main__":
     import argparse

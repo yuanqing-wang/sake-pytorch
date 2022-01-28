@@ -62,7 +62,7 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
         hidden_features: int,
         depth: int=4,
         activation: Callable=torch.nn.SiLU(),
-        clip: bool=False,
+        clip: bool=True,
     ):
         super().__init__()
         self.sake_model = VelocityDenseSAKEModelWithHistory(
@@ -142,7 +142,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
             depth: int=4,
             mp_depth: int=4,
             activation: Callable=torch.nn.SiLU(),
-            clip: bool=False,
+            clip: bool=True,
             log_gamma: float=0.0,
         ):
         super().__init__()
