@@ -73,11 +73,10 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
             depth=depth,
             distance_filter=ContinuousFilterConvolutionWithConcatenation,
             update_coordinate=True,
-            # tanh=True,
         )
 
         self.translation_mlp = torch.nn.Sequential(
-            torch.nn.Linear(hidden_features, hidden_features),
+            torch.nn.Linear(2 * hidden_features, hidden_features),
             torch.nn.Tanh(),
             torch.nn.Linear(hidden_features, 2*depth+1),
             torch.nn.Tanh(),
@@ -101,20 +100,26 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
         vs = vs[..., :-1, :, :]
         h = h[..., :-1, :]
 
+        # (n_batches, n_atoms, n_atoms, 2d)
+        h_cat_ht = get_h_cat_h(h)
+
+        # (n_batches, n_atoms, n_atoms, n_traj)
+        w_translation = self.translation_mlp(h_cat_ht)
+
+        # (n_batches, n_atoms, 3, n_traj)
         translation = torch.cat([xs, vs], dim=-1)
-        translation = translation - translation.mean(dim=-3, keepdim=True)
-        translation_norm = translation.norm(dim=(-2, -3), keepdim=True)
+
+        # (n_batches, n_atoms, 3)
+        translation = (w_translation.unsqueeze(-2) * translation.unsqueeze(-3)).mean(dim=(-1, -3))
+
         if self.clip:
-            max_translation_norm = translation.shape[-2] * translation.shape[-3] * 1.0
+            translation = translation - translation.mean(dim=-2, keepdim=True)
+            translation_norm = translation.norm(dim=(-1, -2), keepdim=True)
+            max_translation_norm = translation.shape[-1] * translation.shape[-2] * 1.0
             clipped_translation_norm = torch.clip(translation_norm, max=max_translation_norm)
             norm_scaling = clipped_translation_norm / (translation_norm + 1e-10)
-        else:
-            norm_scaling = 1.0 / (translation_norm + 1e-10)
+            translation = translation * norm_scaling
 
-        translation = translation * norm_scaling
-
-        # (n_batch, n_atoms, 3)
-        translation = (self.translation_mlp(h).unsqueeze(-2) * translation).sum(dim=-1)
         translation = translation - translation.mean(dim=-2, keepdim=True)
 
         scale = self.scale_mlp(h).mean(dim=-2, keepdim=True)

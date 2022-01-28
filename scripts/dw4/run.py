@@ -41,7 +41,7 @@ def run(args):
     min_loss_te = 1000.0
 
     for idx_epoch in range(50000):
-        x = data_train# [idxs]
+        x = data_train[:10]
         x = x - x.mean(dim=-2, keepdim=True)
         h = torch.zeros(x.shape[0], 4, 1)
         if torch.cuda.is_available():
@@ -83,7 +83,7 @@ def run(args):
                     x = x.cuda()
                 loss_te += (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
 
-            
+
             loss_vl *= 0.1
             loss_te *= 0.1
             print(idx_epoch, "tr: %.4f, vl: %.4f, te: %.4f" % (loss_tr, loss_vl, loss_te), flush=True)
