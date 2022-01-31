@@ -114,7 +114,7 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.log_gamma = torch.nn.Parameter(torch.zeros(n_heads))
-        self.log_epsilon = torch.nn.Parameter(torch.zeros(n_coefficients))
+        self.log_epsilon = torch.nn.Parameter(torch.ones(n_coefficients) * (-5.0))
 
         self.n_heads = n_heads
         self.n_coefficients = n_coefficients
@@ -125,7 +125,7 @@ class DenseSAKELayer(SAKELayer):
         coefficients = self.coefficients_mlp(h_e_mtx)
 
         # (batch_size, n, n, coefficients, 3)
-        combinations = coefficients.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + 1e-5 + self.log_epsilon.exp())).unsqueeze(-2))
+        combinations = coefficients.unsqueeze(-1) * (x_minus_xt.unsqueeze(-2) / (x_minus_xt_norm ** 2.0 + 1e-5 + self.log_epsilon.exp()).unsqueeze(-1))
 
         if mask is not None:
             combinations = combinations * mask.unsqueeze(-1).unsqueeze(-1)
@@ -194,23 +194,23 @@ class DenseSAKELayer(SAKELayer):
         return v
 
     def forward(
-            self, 
-            h: torch.Tensor, 
-            x: torch.Tensor, 
-            v: Union[None, torch.Tensor]=None, 
-            mask: Union[None, torch.Tensor]=None, 
+            self,
+            h: torch.Tensor,
+            x: torch.Tensor,
+            v: Union[None, torch.Tensor]=None,
+            mask: Union[None, torch.Tensor]=None,
             h_e_0: Union[None, torch.Tensor]=None,
         ):
         x_minus_xt = get_x_minus_xt(x)
         x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
         h_cat_ht = get_h_cat_h(h)
-        
+
         if self.edge_features > 0 and h_e_0 is not None:
             h_cat_ht = torch.cat([h_cat_ht, h_e_0], dim=-1)
 
 
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
-        
+
         if self.update_coordinate:
             delta_v = self.coordinate_model(x, x_minus_xt, h_e_mtx)
 
@@ -230,9 +230,6 @@ class DenseSAKELayer(SAKELayer):
         h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
         h_e = self.aggregate(h_e_mtx, mask=mask)
         h = self.node_model(h, h_e, h_combinations, h_combinations_v)
-        # if self.velocity:
-        #     return h, x, v
-        # return h, x
         return h, x, v
 
 class RecurrentDenseSAKELayer(DenseSAKELayer):

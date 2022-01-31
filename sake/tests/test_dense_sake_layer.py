@@ -5,7 +5,7 @@ def test_simple_forward(_equivariance_test_utils):
     import sake
     h0, x0, _, __, ___ = _equivariance_test_utils
     layer = sake.DenseSAKELayer(7, 6, 5, residual=False)
-    h, x = layer(h0, x0)
+    h, x, _ = layer(h0, x0)
     assert h.shape[0] == 5 == x.shape[0]
     assert x.shape[1] == 3
     assert h.shape[1] == 6
@@ -16,7 +16,7 @@ def test_simple_forward_with_edge_features(_equivariance_test_utils):
     h0, x0, _, __, ___ = _equivariance_test_utils
     h_e_0 = torch.randn(h0.shape[0], h0.shape[0], 8)
     layer = sake.DenseSAKELayer(7, 6, 5, residual=False, edge_features=8)
-    h, x = layer(h0, x0, h_e_0=h_e_0)
+    h, x, _ = layer(h0, x0, h_e_0=h_e_0)
     assert h.shape[0] == 5 == x.shape[0]
     assert x.shape[1] == 3
     assert h.shape[1] == 6
@@ -28,10 +28,10 @@ def test_equivariance(_equivariance_test_utils):
     h0, x0, translation, rotation, reflection = _equivariance_test_utils
     layer = sake.DenseSAKELayer(7, 6, 5, residual=False, update_coordinate=True)
 
-    h_original, x_original = layer(h0, x0)
-    h_translation, x_translation = layer(h0, translation(x0))
-    h_rotation, x_rotation = layer(h0, rotation(x0))
-    h_reflection, x_reflection = layer(h0, reflection(x0))
+    h_original, x_original, _ = layer(h0, x0)
+    h_translation, x_translation, _ = layer(h0, translation(x0))
+    h_rotation, x_rotation, _ = layer(h0, rotation(x0))
+    h_reflection, x_reflection, _ = layer(h0, reflection(x0))
 
     assert_almost_equal_tensor(h_translation, h_original, decimal=3)
     assert_almost_equal_tensor(h_rotation, h_original, decimal=3)
