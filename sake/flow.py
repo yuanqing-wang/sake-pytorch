@@ -77,14 +77,14 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
 
         self.translation_mlp = torch.nn.Sequential(
             torch.nn.Linear(2 * hidden_features, hidden_features),
-            torch.nn.Tanh(),
+            torch.nn.SiLU(),
             torch.nn.Linear(hidden_features, 2*depth+1),
-            torch.nn.Tanh(),
+            # torch.nn.Tanh(),
         )
 
         self.scale_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
-            torch.nn.Tanh(),
+            torch.nn.SiLU(),
             torch.nn.Linear(hidden_features, 1),
             torch.nn.Tanh(),
         )
@@ -105,12 +105,18 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
 
         # (n_batches, n_atoms, n_atoms, n_traj)
         w_translation = self.translation_mlp(h_cat_ht)
+        w_translation = w_translation + torch.eye(
+            w_translation.shape[-2], w_translation.shape[-2],
+            device=w_translation.device,
+        ).unsqueeze(-1)
 
         # (n_batches, n_atoms, 3, n_traj)
         translation = torch.cat([xs, vs], dim=-1)
 
         # (n_batches, n_atoms, 3)
         translation = (w_translation.unsqueeze(-2) * translation.unsqueeze(-3)).mean(dim=(-1, -3))
+
+
 
         if self.clip:
             translation = translation - translation.mean(dim=-2, keepdim=True)

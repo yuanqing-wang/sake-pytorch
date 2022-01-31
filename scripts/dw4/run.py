@@ -21,7 +21,6 @@ def run(args):
     data_test = data_test - data_test.mean(dim=-2, keepdim=True)
 
     from sake.flow import SAKEFlowModel, CenteredGaussian
-    print(data_train.norm(dim=(-1, -2), keepdim=True).mean().log())
     model = SAKEFlowModel(
             1, args.width, depth=args.depth, mp_depth=args.mp_depth,
             log_gamma=data_train.norm(dim=(-1, -2), keepdim=True).mean().log()
@@ -41,7 +40,7 @@ def run(args):
     min_loss_te = 1000.0
 
     for idx_epoch in range(50000):
-        x = data_train[:10]
+        x = data_train[:1]
         x = x - x.mean(dim=-2, keepdim=True)
         h = torch.zeros(x.shape[0], 4, 1)
         if torch.cuda.is_available():
@@ -94,7 +93,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--depth", type=int, default=4)
-    parser.add_argument("--mp_depth", type=int, default=4)
+    parser.add_argument("--mp_depth", type=int, default=2)
     parser.add_argument("--width", type=int, default=32)
     parser.add_argument("--weight_decay", type=float, default=1e-12)
     parser.add_argument("--cumulation", type=int, default=1)
