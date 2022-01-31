@@ -92,7 +92,7 @@ class SAKELayer(torch.nn.Module):
         self.coefficients_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
             activation,
-            torch.nn.Linear(hidden_features, n_coefficients),
+            torch.nn.Linear(hidden_features, 3 * n_coefficients),
         )
 
         self.post_norm_mlp = torch.nn.Sequential(
@@ -101,31 +101,26 @@ class SAKELayer(torch.nn.Module):
             torch.nn.Linear(hidden_features, hidden_features),
         )
 
-        self.coefficients_mlp_v = torch.nn.Sequential(
-            torch.nn.Linear(hidden_features, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, n_coefficients),
-        )
-
-        self.post_norm_mlp_v = torch.nn.Sequential(
-            torch.nn.Linear(n_coefficients, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, hidden_features),
-        )
-
         self.log_gamma = torch.nn.Parameter(torch.zeros(n_heads))
-        self.log_epsilon = torch.nn.Parameter(torch.ones(n_coefficients) * (-5.0))
 
         self.n_heads = n_heads
         self.n_coefficients = n_coefficients
 
 class DenseSAKELayer(SAKELayer):
     def spatial_attention(self, h_e_mtx, x_minus_xt, x_minus_xt_norm, mask: Union[None, torch.Tensor]=None):
-        # (batch_size, n, n, coefficients)
-        coefficients = self.coefficients_mlp(h_e_mtx)
+        # (batch_size, n, n, coefficients, 1)
+        coefficients, alpha, beta = self.coefficients_mlp(h_e_mtx).unsqueeze(-1).split(self.n_coefficients, dim=-2)
+        alpha = 2.0 * alpha.sigmoid()
+        beta = (beta - 5.0).exp()
+
+        # (batch_size, n, n, 3)
+        x_minus_xt_direction = x_minus_xt / (x_minus_xt_norm + 1e-5)
+
+        # (batch_size, n, n, n_coefficients, 1)
+        x_minus_xt_norm_linear = (x_minus_xt_norm.unsqueeze(-2) * alpha + beta).pow(-1)
 
         # (batch_size, n, n, coefficients, 3)
-        combinations = coefficients.unsqueeze(-1) * (x_minus_xt.unsqueeze(-2) / (x_minus_xt_norm ** 2.0 + 1e-5 + self.log_epsilon.exp()).unsqueeze(-1))
+        combinations = coefficients * x_minus_xt_direction.unsqueeze(-2) * x_minus_xt_norm_linear
 
         if mask is not None:
             combinations = combinations * mask.unsqueeze(-1).unsqueeze(-1)
