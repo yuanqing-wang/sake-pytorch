@@ -114,7 +114,7 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.log_gamma = torch.nn.Parameter(torch.zeros(n_heads))
-        self.gamma0 = torch.nn.Parameter(torch.tensor(0.0))
+        self.log_epsilon = torch.nn.Parameter(torch.zeros(n_coefficients))
 
         self.n_heads = n_heads
         self.n_coefficients = n_coefficients
@@ -125,7 +125,7 @@ class DenseSAKELayer(SAKELayer):
         coefficients = self.coefficients_mlp(h_e_mtx)
 
         # (batch_size, n, n, coefficients, 3)
-        combinations = coefficients.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + 1e-5)).unsqueeze(-2))
+        combinations = coefficients.unsqueeze(-1) * ((x_minus_xt / (x_minus_xt_norm ** 2.0 + 1e-5 + self.log_epsilon.exp())).unsqueeze(-2))
 
         if mask is not None:
             combinations = combinations * mask.unsqueeze(-1).unsqueeze(-1)
