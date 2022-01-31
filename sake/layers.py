@@ -108,16 +108,22 @@ class SAKELayer(torch.nn.Module):
 
 class DenseSAKELayer(SAKELayer):
     def spatial_attention(self, h_e_mtx, x_minus_xt, x_minus_xt_norm, mask: Union[None, torch.Tensor]=None):
-        # (batch_size, n, n, coefficients, 1)
-        coefficients, alpha, beta = self.coefficients_mlp(h_e_mtx).unsqueeze(-1).split(self.n_coefficients, dim=-2)
+        # (batch_size, n, n, coefficients)
+        coefficients, alpha, beta = self.coefficients_mlp(h_e_mtx).split(self.n_coefficients, dim=-1)
+        coefficients = coefficients.unsqueeze(-1)
         alpha = 2.0 * alpha.sigmoid()
         beta = (beta - 5.0).exp()
 
         # (batch_size, n, n, 3)
         x_minus_xt_direction = x_minus_xt / (x_minus_xt_norm + 1e-5)
 
+        # (batch_size, n, n, n_coefficients)
+        x_minus_xt_norm_linear = x_minus_xt_norm.pow(
+            torch.linspace(-3, -1, self.n_coefficients, device=x_minus_xt_norm.device)
+        )
+
         # (batch_size, n, n, n_coefficients, 1)
-        x_minus_xt_norm_linear = (x_minus_xt_norm.unsqueeze(-2) * alpha + beta).pow(-1)
+        x_minus_xt_norm_linear = (x_minus_xt_norm_linear * alpha + beta).unsqueeze(-1)
 
         # (batch_size, n, n, coefficients, 3)
         combinations = coefficients * x_minus_xt_direction.unsqueeze(-2) * x_minus_xt_norm_linear
