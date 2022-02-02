@@ -40,20 +40,20 @@ class HamiltonianFlowModel(torch.nn.Module, abc.ABC):
     # def loss(self, z, *args, **kwargs):
     #     raise NotImplementedError
 
-class VelocityDenseSAKEModelWithHistory(VelocityDenseSAKEModel):
-    def forward(self, h, x):
-        xs = [x]
-        vs = []
-        h = self.embedding_in(h)
-        v = None
-        for idx, eq_layer in enumerate(self.eq_layers):
-            h, x, v = eq_layer(h, x, v)
-            xs.append(x)
-            vs.append(v)
-        xs = torch.stack(xs, dim=-1)
-        vs = torch.stack(vs, dim=-1)
-        h = self.embedding_out(h)
-        return h, xs, vs
+# class VelocityDenseSAKEModelWithHistory(VelocityDenseSAKEModel):
+#     def forward(self, h, x):
+#         xs = [x]
+#         vs = []
+#         h = self.embedding_in(h)
+#         v = None
+#         for idx, eq_layer in enumerate(self.eq_layers):
+#             h, x, v = eq_layer(h, x, v)
+#             xs.append(x)
+#             vs.append(v)
+#         xs = torch.stack(xs, dim=-1)
+#         vs = torch.stack(vs, dim=-1)
+#         h = self.embedding_out(h)
+#         return h, xs, vs
 
 class SAKEFlowLayer(HamiltonianFlowLayer):
     def __init__(
@@ -65,7 +65,7 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
         clip: bool=True,
     ):
         super().__init__()
-        self.sake_model = VelocityDenseSAKEModelWithHistory(
+        self.sake_model = VelocityDenseSAKEModel(
             in_features=in_features+1,
             out_features=hidden_features,
             hidden_features=hidden_features,
@@ -75,13 +75,6 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
             update_coordinate=True,
         )
 
-        self.translation_mlp = torch.nn.Sequential(
-            torch.nn.Linear(2 * hidden_features, hidden_features),
-            torch.nn.SiLU(),
-            torch.nn.Linear(hidden_features, 2*depth+1),
-            # torch.nn.Tanh(),
-        )
-
         self.scale_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
             torch.nn.SiLU(),
@@ -89,47 +82,18 @@ class SAKEFlowLayer(HamiltonianFlowLayer):
             torch.nn.Tanh(),
         )
 
-        self.clip = clip
-
     def mp(self, h, x):
+        x0 = x
         h = torch.cat([h, x.pow(2).sum(-1, keepdim=True)], dim=-1)
         h = torch.cat([h, torch.zeros_like(h[..., -1, :].unsqueeze(-2))], dim=-2)
         x = torch.cat([x, torch.zeros_like(x[..., -1, :]).unsqueeze(-2)], dim=-2)
-        h, xs, vs = self.sake_model(h, x)
-        xs = xs[..., :-1, :, :]
-        vs = vs[..., :-1, :, :]
+        h, x = self.sake_model(h, x)
+        x = x[..., :-1, :]
         h = h[..., :-1, :]
 
-        # (n_batches, n_atoms, n_atoms, 2d)
-        h_cat_ht = get_h_cat_h(h)
-
-        # (n_batches, n_atoms, n_atoms, n_traj)
-        w_translation = self.translation_mlp(h_cat_ht)
-        w_translation = w_translation + torch.eye(
-            w_translation.shape[-2], w_translation.shape[-2],
-            device=w_translation.device,
-        ).unsqueeze(-1)
-
-        # (n_batches, n_atoms, 3, n_traj)
-        translation = torch.cat([xs, vs], dim=-1)
-
-        # (n_batches, n_atoms, 3)
-        translation = (w_translation.unsqueeze(-2) * translation.unsqueeze(-3)).mean(dim=(-1, -3))
-
-
-
-        if self.clip:
-            translation = translation - translation.mean(dim=-2, keepdim=True)
-            translation_norm = translation.norm(dim=(-1, -2), keepdim=True)
-            max_translation_norm = translation.shape[-1] * translation.shape[-2] * 1.0
-            clipped_translation_norm = torch.clip(translation_norm, max=max_translation_norm)
-            norm_scaling = clipped_translation_norm / (translation_norm + 1e-10)
-            translation = translation * norm_scaling
-
+        translation = x - x0
         translation = translation - translation.mean(dim=-2, keepdim=True)
-
         scale = self.scale_mlp(h).mean(dim=-2, keepdim=True)
-        # print(scale.flatten())
         return scale, translation
 
     def f_forward(self, h, x, v):
