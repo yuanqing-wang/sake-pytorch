@@ -1,4 +1,6 @@
 def run():
+    import os
+    os.system('git clone https://github.com/vgsatorras/en_flows.git')
     file_handle = open("en_flows/dw4_experiment/dataset.py", "r")
     lines = file_handle.readlines()
     lines = [line.replace("dw4_experiment/data/", "en_flows/dw4_experiment/data/") for line in lines]

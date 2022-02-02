@@ -40,7 +40,7 @@ def run(args):
     min_loss_te = 1000.0
 
     for idx_epoch in range(50000):
-        x = data_train[:1]
+        x = data_train[:10]
         x = x - x.mean(dim=-2, keepdim=True)
         h = torch.zeros(x.shape[0], 4, 1)
         if torch.cuda.is_available():
@@ -51,10 +51,10 @@ def run(args):
             v = v_prior.sample(x.shape)
             loss = model.nll_backward(h, x, v, x_prior, v_prior)
             loss.backward()
-            print(loss + v_prior.log_prob(v).mean())
+            # print(loss + v_prior.log_prob(v).mean())
         optimizer.step()
 
-        if idx_epoch % 1000 == 0:
+        if idx_epoch % 100 == 0:
             loss_vl = 0.0
             loss_te = 0.0
             for idx in range(10):
