@@ -22,7 +22,7 @@ do
         --n_epoch 10000 \
         --batch_size 32 \
         --n_coefficients $n_coefficients \
-        --out "_"$weight_decay # $n_coefficients
+        --out "____"$weight_decay # $n_coefficients
     done
 done
 done
