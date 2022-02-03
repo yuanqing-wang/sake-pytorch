@@ -51,7 +51,14 @@ class SAKELayer(torch.nn.Module):
         self.edge_features = edge_features
         self.update_coordinate = update_coordinate
         self.velocity = velocity
+
+        self.in_features = in_features
+        self.hidden_features = hidden_features
+        self.out_features = out_features
+        self.activation = activation
+
         # if update_coordinate:
+
         if tanh:
             self.coordinate_mlp = torch.nn.Sequential(
                 torch.nn.Linear(hidden_features, hidden_features),

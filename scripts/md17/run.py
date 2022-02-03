@@ -10,7 +10,7 @@ from torch.cuda.amp import autocast, GradScaler
 def run(args):
     print(args)
 
-    # os.mkdir(args.out)
+    os.mkdir(args.out)
 
     data = np.load("%s_dft.npz" % args.data)
     np.random.seed(2666)
@@ -31,21 +31,23 @@ def run(args):
 
     from functools import partial
     
-    if "old" in args.data or "toluene" in args.data:
+    if "old" in args.data or "toluene" in args.data or "naphthalene" in args.data:
         in_features = 7
+    
+    elif "azo" in args.data:
+        in_features = 8
 
     else:
         in_features = 9
 
-
-    model = sake.DenseSAKEModel(
+    model = sake.VelocityDenseSAKEModel(
             in_features=in_features, 
             hidden_features=args.hidden_features,
             depth=args.depth,
             out_features=1, 
+            n_coefficients=args.n_coefficients,
+            distance_filter=sake.utils.ContinuousFilterConvolutionWithConcatenation,
             update_coordinate=True,
-            n_coefficients=32,
-            distance_filter=sake.ContinuousFilterConvolution,
             activation=torch.nn.SiLU(),
     )
 
@@ -100,9 +102,9 @@ def run(args):
     x_te.requires_grad = True
     optimizer = torch.optim.Adam(
             model.parameters(),
-            args.learning_rate, weight_decay=args.weight_decay
+            args.learning_rate, weight_decay=args.weight_decay,
     )
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=10, factor=0.8, min_lr=1e-6)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=20, factor=0.1, min_lr=1e-6)
     losses_vl = []
 
     for idx_epoch in range(int(args.n_epoch)):
@@ -126,7 +128,7 @@ def run(args):
                     create_graph=True,
                 )[0]
 
-                loss = torch.nn.MSELoss()(_f_tr, f_tr_pred)
+                loss = torch.nn.L1Loss()(_f_tr, f_tr_pred) + 0.001 * torch.nn.L1Loss()(_e_tr, e_tr_pred)
 
             # loss.backward()
             # optimizer.step()
@@ -137,28 +139,31 @@ def run(args):
         if idx_epoch % 10 ==0:
             model.eval()
             f_vl_pred = []
+            e_vl_pred = []
             idxs = torch.arange(n_vl)
             for idx_batch in range(int(n_vl / batch_size)):
                 _x_vl = x_vl[idxs[idx_batch*batch_size:(idx_batch+1)*batch_size]]
-                e_vl_pred, _ = model(i, _x_vl)
-                e_vl_pred = e_vl_pred.sum(dim=1)
-                e_vl_pred = coloring(e_vl_pred)
+                _e_vl_pred, _ = model(i, _x_vl)
+                _e_vl_pred = _e_vl_pred.sum(dim=1)
+                _e_vl_pred = coloring(_e_vl_pred)
 
                 _f_vl_pred = -1.0 * torch.autograd.grad(
-                    e_vl_pred.sum(),
+                    _e_vl_pred.sum(),
                     _x_vl,
                     retain_graph=True,
                 )[0]
 
-                f_vl_pred.append(_f_vl_pred)
+                e_vl_pred.append(_e_vl_pred.detach())
+                f_vl_pred.append(_f_vl_pred.detach())
 
             f_vl_pred = torch.cat(f_vl_pred, dim=0)
-            loss_vl = torch.nn.L1Loss()(f_vl[:(idx_batch+1)*batch_size], f_vl_pred)
-            # print(idx_epoch, loss_vl, flush=True)
-            scheduler.step(loss_vl)
-            losses_vl.append(loss_vl.item())
-            # torch.save(model.state_dict(), "%s/%s.th" % (args.out, idx_epoch))
-
+            e_vl_pred = torch.cat(e_vl_pred, dim=0)
+            loss_vl_f = torch.nn.L1Loss()(f_vl[:(idx_batch+1)*batch_size], f_vl_pred)
+            loss_vl_e = torch.nn.L1Loss()(e_vl[:(idx_batch+1)*batch_size], e_vl_pred)
+            print(idx_epoch, loss_vl_f, loss_vl_e, flush=True)
+            scheduler.step(loss_vl_f)
+            losses_vl.append(loss_vl_f.item() + 0.001 * loss_vl_e.item())
+            torch.save(model.state_dict(), "%s/%s.th" % (args.out, idx_epoch))
 
 
     losses_vl = np.array(losses_vl)
@@ -172,25 +177,30 @@ def run(args):
     model.eval()
 
     f_te_pred = []
+    e_te_pred = []
     idxs = torch.arange(n_te)
     for idx_batch in range(int(n_te / batch_size)):
         _x_te = x_te[idxs[idx_batch*batch_size:(idx_batch+1)*batch_size]]
-        e_te_pred, _ = model(i, _x_te)
-        e_te_pred = e_te_pred.sum(dim=1)
-        e_te_pred = coloring(e_te_pred)
+        _e_te_pred, _ = model(i, _x_te)
+        _e_te_pred = _e_te_pred.sum(dim=1)
+        _e_te_pred = coloring(_e_te_pred)
 
         _f_te_pred = -1.0 * torch.autograd.grad(
-            e_te_pred,
+            _e_te_pred,
             _x_te,
-            grad_outputs=torch.ones_like(e_te_pred),
+            grad_outputs=torch.ones_like(_e_te_pred),
             retain_graph=True,
         )[0]
 
-        f_te_pred.append(_f_te_pred)
+        f_te_pred.append(_f_te_pred.detach())
+        e_te_pred.append(_e_te_pred.detach())
 
     f_te_pred = torch.cat(f_te_pred, dim=0)
+    e_te_pred = torch.cat(e_te_pred, dim=0)
     loss_te = sake.bootstrap(torch.nn.L1Loss())(f_te[:(idx_batch+1)*batch_size], f_te_pred)
+    loss_te_e = sake.bootstrap(torch.nn.L1Loss())(e_te[:(idx_batch+1)*batch_size], e_te_pred)
     print(loss_te)
+    print(loss_te_e)
 
 
 if __name__ == "__main__":
@@ -207,5 +217,6 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=100)
     parser.add_argument("--n_epoch", type=int, default=3000)
     parser.add_argument("--out", type=str, default="out")
+    parser.add_argument("--n_coefficients", type=int, default=128)
     args = parser.parse_args()
     run(args)
