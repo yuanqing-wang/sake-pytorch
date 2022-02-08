@@ -10,6 +10,8 @@ do
                 do
                     for n_coefficients in 128 # 16 32 64 128 256 512
                     do
+                        for n_heads in 2 # 1 2 3 4 5 6 
+                        do
 
         bsub -q gpuqueue -o %J.stdout -gpu "num=1:j_exclusive=yes" -R "rusage[mem=5] span[ptile=1]" -W 23:59 -n 1\
         python run.py \
@@ -22,8 +24,10 @@ do
         --n_epoch 10000 \
         --batch_size 32 \
         --n_coefficients $n_coefficients \
-        --out "____"$weight_decay # $n_coefficients
+        --n_heads $n_heads \
+        --out $name
     done
+done
 done
 done
 done
