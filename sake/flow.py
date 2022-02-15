@@ -129,12 +129,11 @@ class SAKEFlowModel(HamiltonianFlowModel):
         )
 
         self.log_gamma = torch.nn.Parameter(torch.tensor(log_gamma))
+        
         self.xv_layers = torch.nn.ModuleList()
         self.vx_layers = torch.nn.ModuleList()
-        for _ in range(depth):
-            # self.xv_layers.append(NonEquivariantSAKEFlowLayer())
-            # self.vx_layers.append(NonEquivariantSAKEFlowLayer())
 
+        for _ in range(depth):
 
             self.xv_layers.append(
                 SAKEFlowLayer(
@@ -153,6 +152,8 @@ class SAKEFlowModel(HamiltonianFlowModel):
                     clip=clip,
                 )
             )
+
+
 
     def f_forward(self, h, x, v):
         h = self.embedding_in(h)

@@ -63,8 +63,10 @@ class RBF(torch.nn.Module):
             mu=torch.linspace(0, 30, 300),
             ):
         super(RBF, self).__init__()
-        self.register_buffer("gamma", torch.tensor(gamma))
-        self.register_buffer("mu", torch.tensor(mu))
+        # self.register_buffer("gamma", torch.tensor(gamma))
+        # self.register_buffer("mu", torch.tensor(mu))
+        self.gamma = torch.nn.Parameter(torch.tensor(gamma))
+        self.mu = torch.nn.Parameter(torch.tensor(mu))
         self.out_features = len(mu)
 
     def forward(self, x):

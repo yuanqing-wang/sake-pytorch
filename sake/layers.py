@@ -99,7 +99,7 @@ class SAKELayer(torch.nn.Module):
         self.coefficients_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, hidden_features),
             activation,
-            torch.nn.Linear(hidden_features, 4 * n_coefficients),
+            torch.nn.Linear(hidden_features, n_coefficients),
         )
 
         self.post_norm_mlp = torch.nn.Sequential(
@@ -107,6 +107,12 @@ class SAKELayer(torch.nn.Module):
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
         )
+
+        # self.mixing_mlp = torch.nn.Sequential(
+        #     torch.nn.Linear(in_features, hidden_features),
+        #    activation,
+        #    torch.nn.Linear(hidden_features, 2, bias=False),
+        # )
 
         self.log_gamma = torch.nn.Parameter(torch.zeros(n_heads))
 
@@ -116,19 +122,13 @@ class SAKELayer(torch.nn.Module):
 class DenseSAKELayer(SAKELayer):
     def spatial_attention(self, h_e_mtx, x_minus_xt, x_minus_xt_norm, mask: Union[None, torch.Tensor]=None):
         # (batch_size, n, n, coefficients, 1)
-        coefficients, alpha, beta, lamb = self.coefficients_mlp(h_e_mtx).unsqueeze(-1).split(self.n_coefficients, dim=-2)
-        alpha = alpha.exp()
-        lamb = lamb + 1.0
+        coefficients = self.coefficients_mlp(h_e_mtx).unsqueeze(-1)
 
         # (batch_size, n, n, 3)
-        x_minus_xt_direction = x_minus_xt / (x_minus_xt_norm + 1e-5)
-
-        # (batch_size, n, n, n_coefficients, 1)
-        # x_minus_xt_norm_linear = (x_minus_xt_norm.unsqueeze(-2) * alpha + beta).pow(-1)
-        x_minus_xt_norm_rbf = ((x_minus_xt_norm.unsqueeze(-2) - beta).pow(2) * (-alpha)).exp()
+        x_minus_xt = x_minus_xt / (x_minus_xt_norm + 1e-5) ** 2
 
         # (batch_size, n, n, coefficients, 3)
-        combinations = coefficients * x_minus_xt_direction.unsqueeze(-2) * x_minus_xt_norm_rbf
+        combinations = coefficients * x_minus_xt.unsqueeze(-2)
 
         if mask is not None:
             combinations = combinations * mask.unsqueeze(-1).unsqueeze(-1)
@@ -147,7 +147,13 @@ class DenseSAKELayer(SAKELayer):
         return h_e
 
     def node_model(self, h, h_e, h_combinations, h_combinations_v):
-        out = torch.cat([h, h_e, h_combinations, h_combinations_v], dim=-1)
+        out = torch.cat([
+                h, 
+                h_e, 
+                h_combinations, 
+                h_combinations_v,
+            ], 
+            dim=-1)
         out = self.node_mlp(out)
         if self.residual:
             out = h + out
@@ -224,6 +230,11 @@ class DenseSAKELayer(SAKELayer):
 
             v = delta_v + v
             x = x + v
+
+            # lamb_x, lamb_v = self.mixing_mlp(h).split(1, dim=-1)
+            # lamb_x = lamb_x.tanh() + 1.0
+            # lamb_v = lamb_v.tanh()
+            # x = lamb_x * x + lamb_v * v
 
         v_minus_vt = get_x_minus_xt(x)
         v_minus_vt_norm = get_x_minus_xt_norm(x_minus_xt=v_minus_vt)

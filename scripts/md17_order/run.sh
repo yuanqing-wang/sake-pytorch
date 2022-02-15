@@ -1,4 +1,4 @@
-for name in malonaldehyde # azobenzene naphthalene paracetamol malonaldehyde benzene_old malonaldehyde ethanol toluene salicylic aspirin uracil
+for name in malonaldehyde azobenzene naphthalene paracetamol malonaldehyde benzene_old malonaldehyde ethanol toluene salicylic aspirin uracil
 do
     for learning_rate in 1e-3 # 1e-3 # 5e-3 1e-3 5e-4 1e-4 5e-5 1e-5
     do
@@ -12,6 +12,9 @@ do
                     do
                         for n_heads in 2 # 1 2 3 4 5 6 
                         do
+                            for batch_size in 4 # 1 2 4 8 16
+                            do
+
 
         bsub -q gpuqueue -o %J.stdout -gpu "num=1:j_exclusive=yes" -R "rusage[mem=5] span[ptile=1]" -W 23:59 -n 1\
         python run.py \
@@ -22,11 +25,12 @@ do
         --weight_decay $weight_decay \
         --n_tr 1000 \
         --n_epoch 10000 \
-        --batch_size 32 \
+        --batch_size $batch_size \
         --n_coefficients $n_coefficients \
         --n_heads $n_heads \
         --out $name
     done
+done
 done
 done
 done
