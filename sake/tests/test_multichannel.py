@@ -6,7 +6,7 @@ def test_multichannel_model_equivalent(_equivariance_test_utils):
     from sake.utils import assert_almost_equal_tensor
 
     h0, x0, translation, rotation, reflection = _equivariance_test_utils
-    model = sake.MultiChannelVelocityDenseSAKEModel(7, 7, 7)
+    model = sake.MultiChannelVelocityDenseSAKEModel(7, 7, 7, update_coordinate=True)
     h, x = model(h0, x0)
 
     h_original, x_original = model(h0, x0)

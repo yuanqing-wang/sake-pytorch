@@ -122,7 +122,7 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
         depth: int=4,
         layer: torch.nn.Module=DenseSAKELayer,
         activation: Callable=torch.nn.SiLU(),
-        update_coordinate: Union[List, bool]=False,
+        update_coordinate: Union[List, bool]=True,
         n_channels: int=16,
         *args, **kwargs,
     ):
@@ -191,11 +191,10 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
 
         for idx, eq_layer in enumerate(self.eq_layers):
             h, x, v = eq_layer(h, x, v, mask=mask, h_e_0=h_e_0)
-            print(v)
             if idx != self.depth - 1:
                 h = (h.swapaxes(-1, -3) @ self.h_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
                 x = (x.swapaxes(-1, -3) @ self.x_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
-                v = (v.swapaxes(-1, -3) @ self.v_mixing[idx].softamx(dim=-1)).swapaxes(-1, -3)
+                v = (v.swapaxes(-1, -3) @ self.v_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
 
         h = h.mean(dim=-3)
         x = x.mean(dim=-3)
