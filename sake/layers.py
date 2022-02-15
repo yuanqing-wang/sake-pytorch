@@ -148,11 +148,11 @@ class DenseSAKELayer(SAKELayer):
 
     def node_model(self, h, h_e, h_combinations, h_combinations_v):
         out = torch.cat([
-                h, 
-                h_e, 
-                h_combinations, 
+                h,
+                h_e,
+                h_combinations,
                 h_combinations_v,
-            ], 
+            ],
             dim=-1)
         out = self.node_mlp(out)
         if self.residual:

@@ -100,15 +100,106 @@ class VelocityDenseSAKEModel(torch.nn.Module):
             )
 
     def forward(
-            self, 
-            h, x, 
-            mask: Union[None, torch.Tensor]=None, 
+            self,
+            h, x,
+            mask: Union[None, torch.Tensor]=None,
             v: Union[None, torch.Tensor]=None,
             h_e_0: Union[None, torch.Tensor]=None,
         ):
         h = self.embedding_in(h)
         for idx, eq_layer in enumerate(self.eq_layers):
             h, x, v = eq_layer(h, x, v, mask=mask, h_e_0=h_e_0)
+        h = self.embedding_out(h)
+        return h, x
+
+
+class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features: int,
+        out_features: int,
+        depth: int=4,
+        layer: torch.nn.Module=DenseSAKELayer,
+        activation: Callable=torch.nn.SiLU(),
+        update_coordinate: Union[List, bool]=False,
+        n_channels: int=16,
+        *args, **kwargs,
+    ):
+        super(MultiChannelVelocityDenseSAKEModel, self).__init__()
+        self.in_features = in_features
+        self.hidden_features = hidden_features
+        self.out_features = out_features
+        self.embedding_in = torch.nn.Linear(in_features, hidden_features*n_channels)
+        self.embedding_out = torch.nn.Sequential(
+                torch.nn.Linear(hidden_features, hidden_features),
+                activation,
+                torch.nn.Linear(hidden_features, out_features),
+        )
+        self.activation = activation
+        self.depth = depth
+        self.eq_layers = torch.nn.ModuleList()
+
+        self.n_channels = n_channels
+        self.h_mixing = torch.nn.Parameter(
+            torch.distributions.Normal(0.0, 1.0).rsample(
+                [depth-1, n_channels, n_channels],
+            ),
+        )
+
+        self.x_mixing = torch.nn.Parameter(
+            torch.distributions.Normal(0.0, 1.0).rsample(
+                [depth-1, n_channels, n_channels],
+            ),
+        )
+
+        self.v_mixing = torch.nn.Parameter(
+            torch.distributions.Normal(0.0, 1.0).rsample(
+                [depth-1, n_channels, n_channels],
+            ),
+        )
+
+        if isinstance(update_coordinate, bool):
+            update_coordinate = [update_coordinate for _ in range(depth)]
+
+        for idx in range(0, depth):
+            self.eq_layers.append(
+                layer(
+                    in_features=hidden_features,
+                    hidden_features=hidden_features,
+                    out_features=hidden_features,
+                    update_coordinate=update_coordinate[idx],
+                    velocity=True,
+                    *args, **kwargs,
+                )
+            )
+
+    def forward(
+            self,
+            h, x,
+            mask: Union[None, torch.Tensor]=None,
+            v: Union[None, torch.Tensor]=None,
+            h_e_0: Union[None, torch.Tensor]=None,
+        ):
+
+
+        h = self.embedding_in(h)\
+            .reshape(*h.shape[:-1], self.hidden_features, self.n_channels)\
+            .permute(-1, -3, -2)
+
+        x = x.unsqueeze(-3).repeat_interleave(self.n_channels, dim=-3)
+
+        for idx, eq_layer in enumerate(self.eq_layers):
+            h, x, v = eq_layer(h, x, v, mask=mask, h_e_0=h_e_0)
+            print(v)
+            if idx != self.depth - 1:
+                h = (h.swapaxes(-1, -3) @ self.h_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
+                x = (x.swapaxes(-1, -3) @ self.x_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
+                v = (v.swapaxes(-1, -3) @ self.v_mixing[idx].softamx(dim=-1)).swapaxes(-1, -3)
+
+        h = h.mean(dim=-3)
+        x = x.mean(dim=-3)
+
         h = self.embedding_out(h)
         return h, x
 
