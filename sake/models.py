@@ -141,22 +141,10 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
         self.eq_layers = torch.nn.ModuleList()
 
         self.n_channels = n_channels
-        self.h_mixing = torch.nn.Parameter(
-            torch.distributions.Normal(0.0, 1.0).rsample(
-                [depth-1, n_channels, n_channels],
-            ),
-        )
-
-        self.x_mixing = torch.nn.Parameter(
-            torch.distributions.Normal(0.0, 1.0).rsample(
-                [depth-1, n_channels, n_channels],
-            ),
-        )
-
-        self.v_mixing = torch.nn.Parameter(
-            torch.distributions.Normal(0.0, 1.0).rsample(
-                [depth-1, n_channels, n_channels],
-            ),
+        self.h_mixing = torch.nn.Sequential(
+            torch.nn.Linear(n_channels * hidden_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, n_channels * hidden_features),
         )
 
         if isinstance(update_coordinate, bool):
@@ -191,10 +179,21 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
 
         for idx, eq_layer in enumerate(self.eq_layers):
             h, x, v = eq_layer(h, x, v, mask=mask, h_e_0=h_e_0)
-            if idx != self.depth - 1:
-                h = (h.swapaxes(-1, -3) @ self.h_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
-                # x = (x.swapaxes(-1, -3) @ self.x_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
-                # v = (v.swapaxes(-1, -3) @ self.v_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
+
+            # -1 hidden, -2 atom, -3 channel, -4 batch
+            h = h.reshape(
+                *h.shape[:-3],
+                h.shape[-2],
+                -1,
+            )
+
+            h = self.h_mixing(h)
+            h = h.reshape(
+                *h.shape[:-2],
+                self.n_channels,
+                h.shape[-2],
+                -1,
+            )
 
         h = h.mean(dim=-3)
         x = x.mean(dim=-3)
