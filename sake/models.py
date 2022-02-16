@@ -185,7 +185,7 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
 
         h = self.embedding_in(h)\
             .reshape(*h.shape[:-1], self.hidden_features, self.n_channels)\
-            .permute(-1, -3, -2)
+            .transpose(-1, -2).transpose(-2, -3)
 
         x = x.unsqueeze(-3).repeat_interleave(self.n_channels, dim=-3)
 
@@ -193,8 +193,8 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
             h, x, v = eq_layer(h, x, v, mask=mask, h_e_0=h_e_0)
             if idx != self.depth - 1:
                 h = (h.swapaxes(-1, -3) @ self.h_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
-                x = (x.swapaxes(-1, -3) @ self.x_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
-                v = (v.swapaxes(-1, -3) @ self.v_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
+                # x = (x.swapaxes(-1, -3) @ self.x_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
+                # v = (v.swapaxes(-1, -3) @ self.v_mixing[idx].softmax(dim=-1)).swapaxes(-1, -3)
 
         h = h.mean(dim=-3)
         x = x.mean(dim=-3)
