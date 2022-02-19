@@ -123,7 +123,7 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
         layer: torch.nn.Module=DenseSAKELayer,
         activation: Callable=torch.nn.SiLU(),
         update_coordinate: Union[List, bool]=True,
-        n_channels: int=16,
+        n_channels: int=4,
         *args, **kwargs,
     ):
         super(MultiChannelVelocityDenseSAKEModel, self).__init__()
@@ -139,14 +139,9 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
         self.activation = activation
         self.depth = depth
         self.eq_layers = torch.nn.ModuleList()
+        self.h_mixings = torch.nn.ModuleList()
 
         self.n_channels = n_channels
-        self.h_mixing = torch.nn.Sequential(
-            torch.nn.Linear(n_channels * hidden_features, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, n_channels * hidden_features),
-        )
-
         if isinstance(update_coordinate, bool):
             update_coordinate = [update_coordinate for _ in range(depth)]
 
@@ -158,9 +153,19 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
                     out_features=hidden_features,
                     update_coordinate=update_coordinate[idx],
                     velocity=True,
+                    residual=False,
                     *args, **kwargs,
                 )
             )
+
+            self.h_mixings.append(
+                torch.nn.Sequential(
+                    torch.nn.Linear(n_channels * hidden_features, hidden_features),
+                    activation,
+                    torch.nn.Linear(hidden_features, n_channels * hidden_features),
+                ),
+            )
+
 
     def forward(
             self,
@@ -177,8 +182,9 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
 
         x = x.unsqueeze(-3).repeat_interleave(self.n_channels, dim=-3)
 
-        for idx, eq_layer in enumerate(self.eq_layers):
+        for eq_layer, h_mixing in zip(self.eq_layers, self.h_mixings):
             h, x, v = eq_layer(h, x, v, mask=mask, h_e_0=h_e_0)
+            h0 = h
 
             # -1 hidden, -2 atom, -3 channel, -4 batch
             h = h.reshape(
@@ -187,13 +193,15 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
                 -1,
             )
 
-            h = self.h_mixing(h)
+            h = h_mixing(h)
             h = h.reshape(
                 *h.shape[:-2],
                 self.n_channels,
                 h.shape[-2],
                 -1,
             )
+
+            h = h + h0
 
         h = h.mean(dim=-3)
         x = x.mean(dim=-3)

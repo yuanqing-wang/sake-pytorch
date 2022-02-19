@@ -44,7 +44,7 @@ class SAKELayer(torch.nn.Module):
         self.node_mlp = torch.nn.Sequential(
             torch.nn.Linear(n_heads * hidden_features + 2 * hidden_features + in_features, hidden_features),
             activation,
-            # torch.nn.Linear(hidden_features, out_features),
+            torch.nn.Linear(hidden_features, out_features),
         )
 
         self.residual = residual
