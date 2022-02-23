@@ -49,11 +49,7 @@ def run(args):
             distance_filter=sake.utils.ContinuousFilterConvolutionWithConcatenation,
             update_coordinate=True,
             activation=torch.nn.SiLU(),
-            n_heads=args.n_heads,
-            # tanh=True,
     )
-
-    print(model)
 
     n_tr = args.n_tr
     n_vl = args.n_vl
@@ -62,6 +58,8 @@ def run(args):
     if n_vl == 0:
         n_vl = n_tr
     
+    i = i.repeat(batch_size, 1, 1)
+
     x_tr = x[:n_tr]
     e_tr = e[:n_tr]
     f_tr = f[:n_tr]
@@ -95,7 +93,7 @@ def run(args):
 
 
     
-    # model = torch.jit.trace(model, (i, x_tr[:batch_size]))
+    model = torch.jit.trace(model, (i, x_tr[:batch_size]))
     # model = torch.jit.script(model)
     scaler = GradScaler()
 
@@ -112,10 +110,6 @@ def run(args):
     for idx_epoch in range(int(args.n_epoch)):
         model.train()
         idxs = torch.randperm(n_tr)
-
-        batch_size = max(64 - int(idx_epoch / 10), args.batch_size) 
-        _i = i.repeat(batch_size, 1, 1)
-
         for idx_batch in range(int(n_tr / batch_size)):
             _x_tr = x_tr[idxs[idx_batch*batch_size:(idx_batch+1)*batch_size]]
             _e_tr = e_tr[idxs[idx_batch*batch_size:(idx_batch+1)*batch_size]]
@@ -124,7 +118,7 @@ def run(args):
             optimizer.zero_grad()
 
             with autocast():
-                e_tr_pred, _ = model(_i, _x_tr)
+                e_tr_pred, _ = model(i, _x_tr)
                 e_tr_pred = e_tr_pred.sum(dim=1)
                 e_tr_pred = coloring(e_tr_pred)
 
@@ -136,6 +130,8 @@ def run(args):
 
                 loss = torch.nn.L1Loss()(_f_tr, f_tr_pred) + 0.001 * torch.nn.L1Loss()(_e_tr, e_tr_pred)
 
+            # loss.backward()
+            # optimizer.step()
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -146,9 +142,8 @@ def run(args):
             e_vl_pred = []
             idxs = torch.arange(n_vl)
             for idx_batch in range(int(n_vl / batch_size)):
-                _i = i.repeat(batch_size, 1, 1)
                 _x_vl = x_vl[idxs[idx_batch*batch_size:(idx_batch+1)*batch_size]]
-                _e_vl_pred, _ = model(_i, _x_vl)
+                _e_vl_pred, _ = model(i, _x_vl)
                 _e_vl_pred = _e_vl_pred.sum(dim=1)
                 _e_vl_pred = coloring(_e_vl_pred)
 
@@ -165,8 +160,8 @@ def run(args):
             e_vl_pred = torch.cat(e_vl_pred, dim=0)
             loss_vl_f = torch.nn.L1Loss()(f_vl[:(idx_batch+1)*batch_size], f_vl_pred)
             loss_vl_e = torch.nn.L1Loss()(e_vl[:(idx_batch+1)*batch_size], e_vl_pred)
+            print(idx_epoch, loss_vl_f, loss_vl_e, flush=True)
             scheduler.step(loss_vl_f)
-            print(loss_vl_f.item(), flush=True)
             losses_vl.append(loss_vl_f.item() + 0.001 * loss_vl_e.item())
             torch.save(model.state_dict(), "%s/%s.th" % (args.out, idx_epoch))
 
@@ -184,10 +179,9 @@ def run(args):
     f_te_pred = []
     e_te_pred = []
     idxs = torch.arange(n_te)
-    _i = i.repeat(batch_size, i, i)
     for idx_batch in range(int(n_te / batch_size)):
         _x_te = x_te[idxs[idx_batch*batch_size:(idx_batch+1)*batch_size]]
-        _e_te_pred, _ = model(_i, _x_te)
+        _e_te_pred, _ = model(i, _x_te)
         _e_te_pred = _e_te_pred.sum(dim=1)
         _e_te_pred = coloring(_e_te_pred)
 
@@ -222,7 +216,6 @@ if __name__ == "__main__":
     parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--batch_size", type=int, default=100)
     parser.add_argument("--n_epoch", type=int, default=3000)
-    parser.add_argument("--n_heads", type=int, default=1)
     parser.add_argument("--out", type=str, default="out")
     parser.add_argument("--n_coefficients", type=int, default=128)
     args = parser.parse_args()

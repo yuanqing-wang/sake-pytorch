@@ -1,14 +1,14 @@
-for name in malonaldehyde azobenzene naphthalene paracetamol malonaldehyde benzene_old malonaldehyde ethanol toluene salicylic aspirin uracil
+for name in malonaldehyde # azobenzene naphthalene paracetamol malonaldehyde benzene_old malonaldehyde ethanol toluene salicylic aspirin uracil
 do
     for learning_rate in 1e-3 # 1e-3 # 5e-3 1e-3 5e-4 1e-4 5e-5 1e-5
     do
         for depth in 4 # 3 4 5 6 7 8 9 10 # 3 4 5 6 7 8  # 4 5 6 7 8
         do
-            for hidden_features in 16 # 32 64 128 256 # 128 256 512  # 512 1024 # 128 # 32 64 128 256 512 # 256
+            for hidden_features in 128 # 256 # 128 256 512  # 512 1024 # 128 # 32 64 128 256 512 # 256
             do
                 for weight_decay in 1e-14 # 1e-16 1e-15 1e-14 1e-13 1e-12 # 1e-4 1e-5 1e-6 1e-7
                 do
-                    for n_coefficients in 16 # 16 32 64 128 256 512
+                    for n_coefficients in $hidden_features # 16 32 64 128 256 512
                     do
                         for n_heads in 2 # 1 2 3 4 5 6 
                         do
@@ -28,7 +28,7 @@ do
         --batch_size $batch_size \
         --n_coefficients $n_coefficients \
         --n_heads $n_heads \
-        --out $name
+        --out "_no_tanh"$hidden_features
     done
 done
 done

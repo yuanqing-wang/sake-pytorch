@@ -50,7 +50,7 @@ def run(args):
             update_coordinate=True,
             activation=torch.nn.SiLU(),
             n_heads=args.n_heads,
-            # tanh=True,
+            tanh=False,
     )
 
     print(model)
@@ -113,7 +113,8 @@ def run(args):
         model.train()
         idxs = torch.randperm(n_tr)
 
-        batch_size = max(64 - int(idx_epoch / 10), args.batch_size) 
+        batch_size = max(64 - int(idx_epoch / 10), args.batch_size)
+        # batch_size = 16
         _i = i.repeat(batch_size, 1, 1)
 
         for idx_batch in range(int(n_tr / batch_size)):
@@ -184,7 +185,7 @@ def run(args):
     f_te_pred = []
     e_te_pred = []
     idxs = torch.arange(n_te)
-    _i = i.repeat(batch_size, i, i)
+    _i = i.repeat(batch_size, 1, 1)
     for idx_batch in range(int(n_te / batch_size)):
         _x_te = x_te[idxs[idx_batch*batch_size:(idx_batch+1)*batch_size]]
         _e_te_pred, _ = model(_i, _x_te)

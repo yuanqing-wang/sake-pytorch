@@ -25,6 +25,8 @@ def run(args):
             1, args.width, depth=args.depth, mp_depth=args.mp_depth,
             log_gamma=data_train.norm(dim=(-1, -2), keepdim=True).mean().log()
     )
+    
+    print(model)
 
     x_prior = CenteredGaussian()
     v_prior = CenteredGaussian()
@@ -40,7 +42,7 @@ def run(args):
     min_loss_te = 1000.0
 
     for idx_epoch in range(50000):
-        x = data_train[:10]
+        x = data_train
         x = x - x.mean(dim=-2, keepdim=True)
         h = torch.zeros(x.shape[0], 4, 1)
         if torch.cuda.is_available():
@@ -51,10 +53,9 @@ def run(args):
             v = v_prior.sample(x.shape)
             loss = model.nll_backward(h, x, v, x_prior, v_prior)
             loss.backward()
-            # print(loss + v_prior.log_prob(v).mean())
         optimizer.step()
 
-        if idx_epoch % 100 == 0:
+        if idx_epoch % 1000 == 0:
             loss_vl = 0.0
             loss_te = 0.0
             for idx in range(10):
@@ -92,11 +93,11 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--depth", type=int, default=4)
-    parser.add_argument("--mp_depth", type=int, default=2)
+    parser.add_argument("--depth", type=int, default=3)
+    parser.add_argument("--mp_depth", type=int, default=3)
     parser.add_argument("--width", type=int, default=32)
-    parser.add_argument("--weight_decay", type=float, default=1e-12)
-    parser.add_argument("--cumulation", type=int, default=1)
+    parser.add_argument("--weight_decay", type=float, default=1e-5)
+    parser.add_argument("--cumulation", type=int, default=2)
     parser.add_argument("--n_data", type=int, default=100)
     args = parser.parse_args()
     run(args)

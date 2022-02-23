@@ -98,10 +98,10 @@ def run(args):
 
     model = sake.DenseSAKEModel(
         in_features=10,
-        hidden_features=64,
+        hidden_features=32,
         out_features=1,
         update_coordinate=False, # [False, False, True, True],
-        n_coefficients=8,
+        n_coefficients=32,
         distance_filter=sake.ContinuousFilterConvolution,
         depth=4,
         activation=torch.nn.SiLU(),
