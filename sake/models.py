@@ -113,6 +113,97 @@ class VelocityDenseSAKEModel(torch.nn.Module):
         return h, x
 
 
+class HighDimensionVelocityDenseSAKEModel(torch.nn.Module):
+    def __init__(
+        self,
+        in_features: int,
+        hidden_features: int,
+        out_features: int,
+        depth: int=4,
+        layer: torch.nn.Module=DenseSAKELayer,
+        activation: Callable=torch.nn.SiLU(),
+        update_coordinate: Union[List, bool]=False,
+        n_channel=16,
+        *args, **kwargs,
+    ):
+        super(HighDimensinoVelocityDenseSAKEModel, self).__init__()
+        self.in_features = in_features
+        self.hidden_features = hidden_features
+        self.out_features = out_features
+        self.embedding_in = torch.nn.Linear(in_features, hidden_features)
+        self.embedding_out = torch.nn.Sequential(
+                torch.nn.Linear(hidden_features, hidden_features),
+                activation,
+                torch.nn.Linear(hidden_features, out_features),
+        )
+        self.activation = activation
+        self.depth = depth
+        self.n_channels = n_channels
+        self.eq_layers = torch.nn.ModuleList()
+        self.x_mixings = torch.nn.ModuleList()
+
+
+        if isinstance(update_coordinate, bool):
+            update_coordinate = [update_coordinate for _ in range(depth)]
+
+        for idx in range(0, depth):
+            self.eq_layers.append(
+                layer(
+                    in_features=hidden_features,
+                    hidden_features=hidden_features,
+                    out_features=hidden_features,
+                    update_coordinate=update_coordinate[idx],
+                    velocity=True,
+                    *args, **kwargs,
+                )
+            )
+
+            self.x_mixings.append(
+                torch.nn.Sequential(
+                    torch.nn.Linear(hidden_features, hidden_features),
+                    activation,
+                    torch.nn.Linear(hidden_features, n_channels),
+                )
+            )
+
+
+    def forward(
+            self,
+            h, x,
+            mask: Union[None, torch.Tensor]=None,
+            v: Union[None, torch.Tensor]=None,
+            h_e_0: Union[None, torch.Tensor]=None,
+        ):
+
+
+        # (n_batch, n_atoms, d)
+        h = self.embedding_in(h)
+        
+        x = torch.repeat_interleave(x.unsqueeze(-1), self.n_channels, dim=-1)
+
+        for eq_layer, x_mixing in zip(self.eq_layers, self.x_mixings):
+
+            h, x, v = eq_layer(h, x, v, mask=mask, h_e_0=h_e_0)
+
+            # (..., n_atoms, n_channels)
+            lambs = x_mixing(h)
+
+            # (..., n_atoms, n_channel, 3)
+            x = x.reshape(
+                *x.shape[:-1],
+                self.n_channels,
+                -1
+            )
+
+            x = x * lambs.unsqueeze(-1)
+            
+            x = x.flatten(-2, -1)
+
+        h = self.embedding_out(h)
+        return h, x
+
+
+
 class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
     def __init__(
         self,
