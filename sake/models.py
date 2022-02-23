@@ -1,7 +1,7 @@
 import torch
 import dgl
 from typing import Union, Callable, List
-from .layers import DenseSAKELayer, RecurrentDenseSAKELayer # , SparseSAKELayer
+from .layers import DenseSAKELayer # , SparseSAKELayer
 from .utils import ContinuousFilterConvolution, ConcatenationFilter, ContinuousFilterConvolutionWithConcatenation
 import math
 
@@ -178,7 +178,7 @@ class HighDimensionVelocityDenseSAKEModel(torch.nn.Module):
 
         # (n_batch, n_atoms, d)
         h = self.embedding_in(h)
-        
+
         x = torch.repeat_interleave(x.unsqueeze(-1), self.n_channels, dim=-1)
 
         for eq_layer, x_mixing in zip(self.eq_layers, self.x_mixings):
@@ -196,7 +196,7 @@ class HighDimensionVelocityDenseSAKEModel(torch.nn.Module):
             )
 
             x = x * lambs.unsqueeze(-1)
-            
+
             x = x.flatten(-2, -1)
 
         h = self.embedding_out(h)
@@ -300,98 +300,6 @@ class MultiChannelVelocityDenseSAKEModel(torch.nn.Module):
         h = self.embedding_out(h)
         return h, x
 
-#
-# class RecurrentDenseSAKEModel(torch.nn.Module):
-#     def __init__(
-#         self,
-#         in_features: int,
-#         hidden_features: int,
-#         out_features: int,
-#         depth: int=4,
-#         layer: torch.nn.Module=DenseSAKELayer,
-#         activation: Callable=torch.nn.SiLU(),
-#         batch_norm: bool=False,
-#         update_coordinate: Union[List, bool]=False,
-#         *args, **kwargs,
-#     ):
-#         super(RecurrentDenseSAKEModel, self).__init__()
-#         self.in_features = in_features
-#         self.hidden_features = hidden_features
-#         self.out_features = out_features
-#         self.embedding_in = torch.nn.Linear(in_features, hidden_features)
-#         self.embedding_out = torch.nn.Linear(hidden_features, out_features)
-#         self.activation = activation
-#         self.depth = depth
-#         self.batch_norm = batch_norm
-#         self.eq_layers = torch.nn.ModuleList()
-#
-#         if isinstance(update_coordinate, bool):
-#             update_coordinate = [update_coordinate for _ in range(depth)]
-#
-#         for idx in range(0, depth):
-#             self.eq_layers.append(
-#                 layer(
-#                     in_features=hidden_features,
-#                     hidden_features=hidden_features,
-#                     out_features=hidden_features,
-#                     update_coordinate=update_coordinate[idx],
-#                     *args, **kwargs,
-#                 )
-#             )
-#
-#     def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
-#         h = self.embedding_in(h)
-#         for idx, eq_layer in enumerate(self.eq_layers):
-#             h, _x = eq_layer(h, x, mask=mask)
-#             x = torch.cat([x, _x], dim=-1) # / math.sqrt(2)
-#         h = self.embedding_out(h)
-#
-#         return h, x
-
-class RecurrentDenseSAKEModel(torch.nn.Module):
-    def __init__(
-        self,
-        in_features: int,
-        hidden_features: int,
-        out_features: int,
-        depth: int=4,
-        layer: torch.nn.Module=RecurrentDenseSAKELayer,
-        activation: Callable=torch.nn.SiLU(),
-        batch_norm: bool=False,
-        *args, **kwargs,
-    ):
-        super(RecurrentDenseSAKEModel, self).__init__()
-        self.in_features = in_features
-        self.hidden_features = hidden_features
-        self.out_features = out_features
-        self.embedding_in = torch.nn.Linear(in_features, hidden_features)
-        self.embedding_out = torch.nn.Linear(hidden_features, out_features)
-        self.activation = activation
-        self.depth = depth
-        self.batch_norm = batch_norm
-        self.eq_layers = torch.nn.ModuleList()
-
-        for idx in range(0, depth):
-            self.eq_layers.append(
-                layer(
-                    in_features=hidden_features,
-                    hidden_features=hidden_features,
-                    out_features=hidden_features,
-                    order=1,
-                    *args, **kwargs,
-                )
-            )
-
-    def forward(self, h, x, mask: Union[None, torch.Tensor]=None):
-        x = x.unsqueeze(-3)
-        x0 = x
-        h = self.embedding_in(h)
-        for idx, eq_layer in enumerate(self.eq_layers):
-            x = torch.cat([x0, x[..., -1, :, :].unsqueeze(-3)], dim=-3)
-            h, x = eq_layer(h, x, mask=mask)
-        h = self.embedding_out(h)
-
-        return h, x
 
 
 class TandemDenseSAKEModel(torch.nn.Module):

@@ -42,7 +42,7 @@ class SAKELayer(torch.nn.Module):
         self.edge_model = distance_filter(2*in_features+edge_features, hidden_features)
 
         self.node_mlp = torch.nn.Sequential(
-            torch.nn.Linear(n_heads * hidden_features + 2 * hidden_features + in_features, hidden_features),
+            torch.nn.Linear(n_heads * hidden_features + hidden_features + in_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, out_features),
         )
@@ -108,12 +108,6 @@ class SAKELayer(torch.nn.Module):
             torch.nn.Linear(hidden_features, hidden_features),
         )
 
-        # self.mixing_mlp = torch.nn.Sequential(
-        #     torch.nn.Linear(in_features, hidden_features),
-        #    activation,
-        #    torch.nn.Linear(hidden_features, 2, bias=False),
-        # )
-
         self.log_gamma = torch.nn.Parameter(torch.zeros(n_heads))
 
         self.n_heads = n_heads
@@ -137,7 +131,7 @@ class DenseSAKELayer(SAKELayer):
         combinations_sum = combinations.sum(dim=-3)
         combinations_norm = combinations_sum.pow(2).sum(-1)
         h_combinations = self.post_norm_mlp(combinations_norm)
-        return h_combinations
+        return h_combinations, combinations.mean(dim=(-2, -3))
 
     def aggregate(self, h_e_mtx, mask: Union[None, torch.Tensor]=None):
         # h_e_mtx = self.mask_self(h_e_mtx)
@@ -146,23 +140,17 @@ class DenseSAKELayer(SAKELayer):
         h_e = h_e_mtx.sum(dim=-2)
         return h_e
 
-    def node_model(self, h, h_e, h_combinations, h_combinations_v):
+    def node_model(self, h, h_e, h_combinations):
         out = torch.cat([
                 h,
                 h_e,
                 h_combinations,
-                h_combinations_v,
             ],
             dim=-1)
         out = self.node_mlp(out)
         if self.residual:
             out = h + out
         return out
-
-    def coordinate_model(self, x, x_minus_xt, h_e_mtx):
-        translation = x_minus_xt * self.coordinate_mlp(h_e_mtx)
-        delta_v = translation.mean(dim=-2)
-        return delta_v
 
     def euclidean_attention(self, x_minus_xt_norm):
         # (batch_size, n, n, 1)
@@ -219,9 +207,10 @@ class DenseSAKELayer(SAKELayer):
 
 
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
+        h_combinations, delta_v = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
 
         if self.update_coordinate:
-            delta_v = self.coordinate_model(x, x_minus_xt, h_e_mtx)
+            # delta_v = self.coordinate_model(x, x_minus_xt, h_e_mtx)
 
             if v is not None and self.velocity:
                 v = self.velocity_model(v, h)
@@ -231,17 +220,8 @@ class DenseSAKELayer(SAKELayer):
             v = delta_v + v
             x = x + v
 
-            # lamb_x, lamb_v = self.mixing_mlp(h).split(1, dim=-1)
-            # lamb_x = lamb_x.tanh() + 1.0
-            # lamb_v = lamb_v.tanh()
-            # x = lamb_x * x + lamb_v * v
-
-        v_minus_vt = get_x_minus_xt(x)
-        v_minus_vt_norm = get_x_minus_xt_norm(x_minus_xt=v_minus_vt)
-        h_combinations = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
-        h_combinations_v = self.spatial_attention(h_e_mtx, v_minus_vt, v_minus_vt_norm, mask=mask)
         combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
         h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
         h_e = self.aggregate(h_e_mtx, mask=mask)
-        h = self.node_model(h, h_e, h_combinations, h_combinations_v)
+        h = self.node_model(h, h_e, h_combinations)
         return h, x, v
