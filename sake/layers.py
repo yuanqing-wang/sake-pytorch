@@ -103,9 +103,17 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.post_norm_mlp = torch.nn.Sequential(
-            torch.nn.Linear(n_coefficients, hidden_features),
+            torch.nn.Linear(n_coefficients * n_coefficients, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
+        )
+
+        self.v_mixing = torch.nn.Linear(n_coefficients * n_coefficients, 1, bias=False)
+
+        self.x_mixing = torch.nn.Sequential(
+                torch.nn.Linear(hidden_features, hidden_features),
+                activation,
+                torch.nn.Linear(hidden_features, n_coefficients),
         )
 
         self.log_gamma = torch.nn.Parameter(torch.zeros(n_heads))
@@ -115,23 +123,29 @@ class SAKELayer(torch.nn.Module):
 
 class DenseSAKELayer(SAKELayer):
     def spatial_attention(self, h_e_mtx, x_minus_xt, x_minus_xt_norm, mask: Union[None, torch.Tensor]=None):
-        # (batch_size, n, n, coefficients, 1)
-        coefficients = self.coefficients_mlp(h_e_mtx).unsqueeze(-1)
+        # (batch_size, n, n, n_coefficients)
+        coefficients = self.coefficients_mlp(h_e_mtx)# .unsqueeze(-1)
+
+        # (batch_size, n, n, n_coefficients)
+        basis = self.x_mixing(h_e_mtx)
 
         # (batch_size, n, n, 3)
         x_minus_xt = x_minus_xt / (x_minus_xt_norm + 1e-5) ** 2
 
-        # (batch_size, n, n, coefficients, 3)
-        combinations = coefficients * x_minus_xt.unsqueeze(-2)
+        # (batch_size, n, n, coefficients, coefficients, 3)
+        combinations = x_minus_xt.unsqueeze(-2).unsqueeze(-2) * coefficients.unsqueeze(-1).unsqueeze(-1) * basis.unsqueeze(-2).unsqueeze(-1)
 
+        combinations = combinations.flatten(-3, -2)
+        
         if mask is not None:
             combinations = combinations * mask.unsqueeze(-1).unsqueeze(-1)
 
         # (batch_size, n, n, coefficients)
         combinations_sum = combinations.sum(dim=-3)
         combinations_norm = combinations_sum.pow(2).sum(-1)
+
         h_combinations = self.post_norm_mlp(combinations_norm)
-        return h_combinations, combinations.mean(dim=-2)
+        return h_combinations, combinations
 
     def aggregate(self, h_e_mtx, mask: Union[None, torch.Tensor]=None):
         # h_e_mtx = self.mask_self(h_e_mtx)
@@ -209,7 +223,10 @@ class DenseSAKELayer(SAKELayer):
         h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
         euclidean_attention, semantic_attention, combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
         h_combinations, delta_v = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, mask=mask)
-        delta_v = (semantic_attention.mean(dim=-1, keepdims=True) * delta_v).mean(dim=-3)
+
+        # delta_v = delta_v.mean(dim=-3)
+        #
+        delta_v = self.v_mixing(delta_v.transpose(-1, -2)).transpose(-1, -2).mean(dim=(-2, -3))
 
         if self.update_coordinate:
             # delta_v = self.coordinate_model(x, x_minus_xt, h_e_mtx)
