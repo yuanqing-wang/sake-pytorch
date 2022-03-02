@@ -100,6 +100,7 @@ class SAKELayer(torch.nn.Module):
             torch.nn.Linear(hidden_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, n_coefficients),
+            torch.nn.Tanh(),
         )
 
         self.post_norm_mlp = torch.nn.Sequential(
@@ -108,13 +109,10 @@ class SAKELayer(torch.nn.Module):
             torch.nn.Linear(hidden_features, hidden_features),
         )
 
-        self.v_mixing = torch.nn.Linear(n_coefficients * n_coefficients, 1, bias=False)
+        self.v_mixing = torch.nn.Linear(n_coefficients, 1, bias=False)
 
-        self.x_mixing = torch.nn.Sequential(
-                torch.nn.Linear(hidden_features, hidden_features),
-                activation,
-                torch.nn.Linear(hidden_features, n_coefficients),
-        )
+        self.spatial_attention_rbf = RBF(mu=torch.linspace(0.0, 1.0, n_coefficients))
+        self.spatial_attention_log_gamma = torch.nn.Parameter(torch.tensor(0.0))
 
         self.log_gamma = torch.nn.Parameter(torch.zeros(n_heads))
 
@@ -126,23 +124,19 @@ class DenseSAKELayer(SAKELayer):
         # (batch_size, n, n, n_coefficients)
         coefficients = self.coefficients_mlp(h_e_mtx)# .unsqueeze(-1)
 
-        # (batch_size, n, n, n_coefficients)
-        basis = self.x_mixing(h_e_mtx)
-
         # (batch_size, n, n, 3)
-        x_minus_xt = x_minus_xt / (x_minus_xt_norm + 1e-5) ** 2
+        x_minus_xt = (-x_minus_xt_norm * self.spatial_attention_log_gamma.exp()).exp() * x_minus_xt / (x_minus_xt_norm + 1e-5)
 
-        # (batch_size, n, n, coefficients, coefficients, 3)
-        combinations = x_minus_xt.unsqueeze(-2).unsqueeze(-2) * coefficients.unsqueeze(-1).unsqueeze(-1) * basis.unsqueeze(-2).unsqueeze(-1)
+        # (batch_size, n, n, coefficients, 3)
+        combinations = x_minus_xt.unsqueeze(-2) * coefficients.unsqueeze(-1)
 
-        combinations = combinations.flatten(-3, -2)
-        
         if mask is not None:
             combinations = combinations * mask.unsqueeze(-1).unsqueeze(-1)
 
         # (batch_size, n, n, coefficients)
-        combinations_sum = combinations.sum(dim=-3)
-        combinations_norm = combinations_sum.pow(2).sum(-1)
+        combinations_sum = combinations.mean(dim=-3)
+        combinations_norm = combinations_sum.pow(2).sum(-1, keepdim=True)
+        combinations_norm = self.spatial_attention_rbf(combinations_norm).flatten(-2, -1)
 
         h_combinations = self.post_norm_mlp(combinations_norm)
         return h_combinations, combinations
