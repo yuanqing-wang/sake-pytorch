@@ -1,12 +1,12 @@
 import pytest
 
-def test_tandem_model_equivalent(_equivariance_test_utils):
+def test_multichannel_model_equivalent(_equivariance_test_utils):
     import torch
     import sake
     from sake.utils import assert_almost_equal_tensor
 
     h0, x0, translation, rotation, reflection = _equivariance_test_utils
-    model = sake.RecurrentDenseSAKEModel(7, 7, 7)
+    model = sake.MultiChannelVelocityDenseSAKEModel(7, 7, 7, update_coordinate=True)
     h, x = model(h0, x0)
 
     h_original, x_original = model(h0, x0)

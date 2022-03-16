@@ -50,10 +50,10 @@ def run(args):
             update_coordinate=True,
             activation=torch.nn.SiLU(),
             n_heads=args.n_heads,
-            # tanh=True,
+            tanh=False,
     )
-   
-    print("num_param", sum(p.numel() for p in model.parameters()))
+
+    print(model)
 
     n_tr = args.n_tr
     n_vl = args.n_vl
@@ -93,16 +93,18 @@ def run(args):
         f_te = f_te.cuda()
         i = i.cuda()
 
+
     
+    # model = torch.jit.trace(model, (i, x_tr[:batch_size]))
+    # model = torch.jit.script(model)
     scaler = GradScaler()
 
     x_tr.requires_grad = True
     x_vl.requires_grad = True
     x_te.requires_grad = True
     optimizer = torch.optim.Adam(
-            model.parameters(), # 1e-6,
-            args.learning_rate, 
-            weight_decay=args.weight_decay,
+            model.parameters(),
+            args.learning_rate, weight_decay=args.weight_decay,
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=20, factor=0.1, min_lr=1e-6)
     losses_vl = []
@@ -110,14 +112,9 @@ def run(args):
     for idx_epoch in range(int(args.n_epoch)):
         model.train()
         idxs = torch.randperm(n_tr)
-        
-        if idx_epoch < 1000:
-            batch_size = 16
-        elif idx_epoch < 2000:
-            batch_size = 4
-        else:
-            batch_size = 1
 
+        batch_size = max(64 - int(idx_epoch / 10), args.batch_size)
+        # batch_size = 16
         _i = i.repeat(batch_size, 1, 1)
 
         for idx_batch in range(int(n_tr / batch_size)):

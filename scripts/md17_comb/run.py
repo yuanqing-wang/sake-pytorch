@@ -47,13 +47,15 @@ def run(args):
             out_features=1, 
             n_coefficients=args.n_coefficients,
             distance_filter=sake.utils.ContinuousFilterConvolutionWithConcatenation,
-            update_coordinate=True,
+            update_coordinate=[
+                bool(args.b0),
+                bool(args.b1),
+                bool(args.b2),
+                bool(args.b3),
+            ],
             activation=torch.nn.SiLU(),
             n_heads=args.n_heads,
-            # tanh=True,
     )
-   
-    print("num_param", sum(p.numel() for p in model.parameters()))
 
     n_tr = args.n_tr
     n_vl = args.n_vl
@@ -62,6 +64,8 @@ def run(args):
     if n_vl == 0:
         n_vl = n_tr
     
+    i = i.repeat(batch_size, 1, 1)
+
     x_tr = x[:n_tr]
     e_tr = e[:n_tr]
     f_tr = f[:n_tr]
@@ -93,16 +97,18 @@ def run(args):
         f_te = f_te.cuda()
         i = i.cuda()
 
+
     
+    model = torch.jit.trace(model, (i, x_tr[:batch_size]))
+    # model = torch.jit.script(model)
     scaler = GradScaler()
 
     x_tr.requires_grad = True
     x_vl.requires_grad = True
     x_te.requires_grad = True
     optimizer = torch.optim.Adam(
-            model.parameters(), # 1e-6,
-            args.learning_rate, 
-            weight_decay=args.weight_decay,
+            model.parameters(),
+            args.learning_rate, weight_decay=args.weight_decay,
     )
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, patience=20, factor=0.1, min_lr=1e-6)
     losses_vl = []
@@ -110,16 +116,6 @@ def run(args):
     for idx_epoch in range(int(args.n_epoch)):
         model.train()
         idxs = torch.randperm(n_tr)
-        
-        if idx_epoch < 1000:
-            batch_size = 16
-        elif idx_epoch < 2000:
-            batch_size = 4
-        else:
-            batch_size = 1
-
-        _i = i.repeat(batch_size, 1, 1)
-
         for idx_batch in range(int(n_tr / batch_size)):
             _x_tr = x_tr[idxs[idx_batch*batch_size:(idx_batch+1)*batch_size]]
             _e_tr = e_tr[idxs[idx_batch*batch_size:(idx_batch+1)*batch_size]]
@@ -128,7 +124,7 @@ def run(args):
             optimizer.zero_grad()
 
             with autocast():
-                e_tr_pred, _ = model(_i, _x_tr)
+                e_tr_pred, _ = model(i, _x_tr)
                 e_tr_pred = e_tr_pred.sum(dim=1)
                 e_tr_pred = coloring(e_tr_pred)
 
@@ -140,6 +136,8 @@ def run(args):
 
                 loss = torch.nn.L1Loss()(_f_tr, f_tr_pred) + 0.001 * torch.nn.L1Loss()(_e_tr, e_tr_pred)
 
+            # loss.backward()
+            # optimizer.step()
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -150,9 +148,8 @@ def run(args):
             e_vl_pred = []
             idxs = torch.arange(n_vl)
             for idx_batch in range(int(n_vl / batch_size)):
-                _i = i.repeat(batch_size, 1, 1)
                 _x_vl = x_vl[idxs[idx_batch*batch_size:(idx_batch+1)*batch_size]]
-                _e_vl_pred, _ = model(_i, _x_vl)
+                _e_vl_pred, _ = model(i, _x_vl)
                 _e_vl_pred = _e_vl_pred.sum(dim=1)
                 _e_vl_pred = coloring(_e_vl_pred)
 
@@ -188,10 +185,9 @@ def run(args):
     f_te_pred = []
     e_te_pred = []
     idxs = torch.arange(n_te)
-    _i = i.repeat(batch_size, 1, 1)
     for idx_batch in range(int(n_te / batch_size)):
         _x_te = x_te[idxs[idx_batch*batch_size:(idx_batch+1)*batch_size]]
-        _e_te_pred, _ = model(_i, _x_te)
+        _e_te_pred, _ = model(i, _x_te)
         _e_te_pred = _e_te_pred.sum(dim=1)
         _e_te_pred = coloring(_e_te_pred)
 
@@ -229,5 +225,9 @@ if __name__ == "__main__":
     parser.add_argument("--n_heads", type=int, default=1)
     parser.add_argument("--out", type=str, default="out")
     parser.add_argument("--n_coefficients", type=int, default=128)
+    parser.add_argument("--b0", type=int, default=0)
+    parser.add_argument("--b1", type=int, default=0)
+    parser.add_argument("--b2", type=int, default=0)
+    parser.add_argument("--b3", type=int, default=0)
     args = parser.parse_args()
     run(args)

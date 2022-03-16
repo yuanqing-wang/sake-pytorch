@@ -59,12 +59,14 @@ class ConditionalColoring(torch.nn.Module):
 class RBF(torch.nn.Module):
     def __init__(
             self,
-            gamma=10.0,
             mu=torch.linspace(0, 30, 300),
+            gamma=10.0,
             ):
         super(RBF, self).__init__()
-        # self.register_buffer("gamma", torch.tensor(gamma))
-        # self.register_buffer("mu", torch.tensor(mu))
+
+        if gamma is None:
+            gamma = 0.5 / (mu[1] - mu[0]) ** 2
+
         self.gamma = torch.nn.Parameter(torch.tensor(gamma))
         self.mu = torch.nn.Parameter(torch.tensor(mu))
         self.out_features = len(mu)
@@ -103,15 +105,15 @@ class ContinuousFilterConvolutionWithConcatenation(torch.nn.Module):
         self.mlp_out = torch.nn.Sequential(
             torch.nn.Linear(in_features + kernel_dimension + 1, out_features),
             activation,
-            torch.nn.Linear(out_features, out_features),
-            activation,
+            # torch.nn.Linear(out_features, out_features),
+            # activation,
         )
 
     def forward(self, h, x):
         h0 = h
         h = self.mlp_in(h)
         _x = self.kernel(x)
-        h = self.mlp_out(torch.cat([h0, h * _x, x], dim=-1)) # * (1.0 - torch.eye(x.shape[-2], x.shape[-2], device=x.device).unsqueeze(-1))
+        h = self.mlp_out(torch.cat([h0, _x, x], dim=-1)) # * (1.0 - torch.eye(x.shape[-2], x.shape[-2], device=x.device).unsqueeze(-1))
 
         return h
 
