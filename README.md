@@ -1,2 +1,2 @@
 # sake
-Spatial Attention on K-Hop Neighborhood with Equivariance 
+Spatial Attention on Kinetic Network with E(n)-Equivariance 
