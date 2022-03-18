@@ -183,8 +183,8 @@ class DenseSAKELayer(SAKELayer):
             mask: Union[None, torch.Tensor]=None,
             h_e_0: Union[None, torch.Tensor]=None,
         ):
-        x = x - x.mean(dim=-2, keepdim=True)
-        x_norm = x.pow(2).sum(dim=-1, keepdim=True).pow(0.5).sum(dim=-2, keepdim=True)
+        # x = x - x.mean(dim=-2, keepdim=True)
+        # x_norm = x.pow(2).sum(dim=-1, keepdim=True).pow(0.5).sum(dim=-2, keepdim=True)
 
         x_minus_xt = get_x_minus_xt(x)
         x_minus_xt_norm = get_x_minus_xt_norm(x_minus_xt=x_minus_xt)
@@ -213,10 +213,10 @@ class DenseSAKELayer(SAKELayer):
                 v = torch.zeros_like(x)
 
             v = delta_v + v
-            v = v - v.mean(dim=-2, keepdim=True)
+            # v = v - v.mean(dim=-2, keepdim=True)
             x = x + v
          
-        x_norm_new = x.pow(2).sum(dim=-1, keepdim=True).pow(0.5).sum(dim=-2, keepdim=True)
-        x = x * x_norm / (x_norm_new + 1e-10)
+        # x_norm_new = x.pow(2).sum(dim=-1, keepdim=True).pow(0.5).sum(dim=-2, keepdim=True)
+        # x = x * x_norm / (x_norm_new + 1e-10)
 
         return h, x, v
