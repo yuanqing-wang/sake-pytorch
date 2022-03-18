@@ -9,6 +9,8 @@ def run():
     file_handle.writelines(lines)
     file_handle.close()
 
+    os.system('wget https://raw.githubusercontent.com/vgsatorras/en_flows/main/flows/ffjord.py')
+
 
 if __name__ == "__main__":
     run()
