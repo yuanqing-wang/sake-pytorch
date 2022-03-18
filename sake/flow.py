@@ -129,7 +129,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
         )
 
         self.log_gamma = torch.nn.Parameter(torch.tensor(log_gamma))
-        
+
         self.xv_layers = torch.nn.ModuleList()
         self.vx_layers = torch.nn.ModuleList()
 
@@ -190,6 +190,45 @@ class SAKEFlowModel(HamiltonianFlowModel):
         nll_x = -x_prior.log_prob(x).mean()
         nll_v = -v_prior.log_prob(v).mean()
         return nll_x + nll_v + sum_log_det.mean()
+
+class SAKEDynamics(torch.nn.Module):
+    def __init__(
+            self,
+            hidden_features: int,
+            depth: int,
+            activation: Callable=torch.nn.SiLU(),
+        ):
+        super().__init__()
+
+        self.embedding_in = torch.nn.Sequential(
+            torch.nn.Linear(2, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, hidden_features),
+        )
+
+        self.sake_model = VelocityDenseSAKEModel(
+            in_features=hidden_features,
+            out_features=hidden_features,
+            hidden_features=hidden_features,
+            activation=activation,
+            depth=depth,
+            distance_filter=ContinuousFilterConvolutionWithConcatenation,
+            update_coordinate=True,
+        )
+
+    def forward(self, t, x):
+        t = t * torch.ones(x.shape[:-1]).unsqueeze(-1)
+        h = torch.cat([t, x.pow(2).sum(-1, keepdim=True)], dim=-1)
+        h = self.embedding_in(h)
+        h, x1 = self.sake_model(h, x)
+        x = x1 - x
+        x = x - x.mean(dim=-2, keepdim=True)
+        return x
+
+
+
+
+
 
 class CenteredGaussian(torch.distributions.Normal):
     def __init__(self, scale=1.0):
