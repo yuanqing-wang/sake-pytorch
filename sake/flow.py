@@ -118,7 +118,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
             mp_depth: int=4,
             activation: Callable=torch.nn.SiLU(),
             clip: bool=True,
-            log_gamma: float=0.0,
+            beta: float=1.0,
         ):
         super().__init__()
         self.depth = depth
@@ -152,7 +152,7 @@ class SAKEFlowModel(HamiltonianFlowModel):
                 )
             )
 
-
+        self.beta = beta
 
     def f_forward(self, h, x, v):
         h = self.embedding_in(h)
@@ -165,27 +165,27 @@ class SAKEFlowModel(HamiltonianFlowModel):
             v, x, log_det = vx_layer.f_forward(h, v, x)
             x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
-        sum_log_det = sum_log_det + self.log_gamma * x.shape[-1] * x.shape[-2]
         return x, v, sum_log_det
 
     def f_backward(self, h, x, v):
         h = self.embedding_in(h)
-        sum_log_det = 0.0
+        sum_log_det_x = 0.0
+        sum_log_det_v = 0.0
         for xv_layer, vx_layer in zip(self.xv_layers[::-1], self.vx_layers[::-1]):
             v, x, log_det = vx_layer.f_backward(h, v, x)
             x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
-            sum_log_det = sum_log_det + log_det
+            sum_log_det_v = sum_log_det_v + log_det
 
             x, v, log_det = xv_layer.f_backward(h, x, v)
             x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
-            sum_log_det = sum_log_det + log_det
-        return x, v, sum_log_det
+            sum_log_det_x = sum_log_det_x + log_det
+        return x, v, sum_log_det_x, sum_log_det_v
 
-    def nll_backward(self, h, x, v, x_prior, v_prior):
-        x, v, sum_log_det = self.f_backward(h, x, v)
+    def nll_backward(self, h, x, v, x_prior, v_prior, beta=1.0):
+        x, v, sum_log_det_x, sum_log_det_v = self.f_backward(h, x, v)
         nll_x = -x_prior.log_prob(x).mean()
         nll_v = -v_prior.log_prob(v).mean()
-        return nll_x + nll_v + sum_log_det.mean()
+        return nll_x + beta * nll_v + sum_log_det_x.mean() + beta * sum_log_det_v.mean()
 
 class SAKEDynamics(torch.nn.Module):
     def __init__(
