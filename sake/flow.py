@@ -128,7 +128,6 @@ class SAKEFlowModel(HamiltonianFlowModel):
             torch.nn.Linear(hidden_features, hidden_features),
         )
 
-        self.log_gamma = torch.nn.Parameter(torch.tensor(log_gamma))
 
         self.xv_layers = torch.nn.ModuleList()
         self.vx_layers = torch.nn.ModuleList()
@@ -167,14 +166,11 @@ class SAKEFlowModel(HamiltonianFlowModel):
             x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
             sum_log_det = sum_log_det + log_det
         sum_log_det = sum_log_det + self.log_gamma * x.shape[-1] * x.shape[-2]
-        x = x * self.log_gamma.exp()
         return x, v, sum_log_det
 
     def f_backward(self, h, x, v):
         h = self.embedding_in(h)
         sum_log_det = 0.0
-        x = x * (-self.log_gamma).exp()
-        sum_log_det = sum_log_det + self.log_gamma * x.shape[-1] * x.shape[-2]
         for xv_layer, vx_layer in zip(self.xv_layers[::-1], self.vx_layers[::-1]):
             v, x, log_det = vx_layer.f_backward(h, v, x)
             x, v = x - x.mean(dim=-2, keepdim=True), v - v.mean(dim=-2, keepdim=True)
@@ -217,7 +213,7 @@ class SAKEDynamics(torch.nn.Module):
         )
 
     def forward(self, t, x):
-        t = t * torch.ones(x.shape[:-1]).unsqueeze(-1)
+        t = t * torch.ones(x.shape[:-1], device=x.device).unsqueeze(-1)
         h = torch.cat([t, x.pow(2).sum(-1, keepdim=True)], dim=-1)
         h = self.embedding_in(h)
         h, x1 = self.sake_model(h, x)

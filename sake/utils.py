@@ -94,25 +94,25 @@ class ContinuousFilterConvolutionWithConcatenation(torch.nn.Module):
         in_features: int,
         out_features: int,
         activation: Callable=torch.nn.SiLU(),
-        kernel: Callable=RBF(),
+        kernel: Callable=RBF,
     ):
         super(ContinuousFilterConvolutionWithConcatenation, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
-        self.kernel = kernel
-        kernel_dimension = kernel.out_features
+        self.kernel = kernel()
+        kernel_dimension = self.kernel.out_features
         self.mlp_in = torch.nn.Linear(in_features, kernel_dimension)
         self.mlp_out = torch.nn.Sequential(
             torch.nn.Linear(in_features + kernel_dimension + 1, out_features),
             activation,
-            # torch.nn.Linear(out_features, out_features),
+            torch.nn.Linear(out_features, out_features),
             # activation,
         )
 
     def forward(self, h, x):
         h0 = h
         h = self.mlp_in(h)
-        _x = self.kernel(x)
+        _x = self.kernel(x) * h
         h = self.mlp_out(torch.cat([h0, _x, x], dim=-1)) # * (1.0 - torch.eye(x.shape[-2], x.shape[-2], device=x.device).unsqueeze(-1))
 
         return h

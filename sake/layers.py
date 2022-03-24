@@ -36,6 +36,7 @@ class SAKELayer(torch.nn.Module):
         edge_features: int=0,
         velocity: bool=False,
         tanh: bool=False,
+        log_gamma: float=0.0,
     ):
         super().__init__()
 
@@ -60,6 +61,7 @@ class SAKELayer(torch.nn.Module):
         self.out_features = out_features
         self.activation = activation
 
+        '''
         if tanh:
             self.velocity_mlp = torch.nn.Sequential(
                 torch.nn.Linear(in_features, hidden_features),
@@ -69,13 +71,14 @@ class SAKELayer(torch.nn.Module):
             )
 
         else:
-            self.velocity_mlp = torch.nn.Sequential(
-                torch.nn.Linear(in_features, hidden_features),
-                activation,
-                torch.nn.Linear(hidden_features, 1, bias=False),
-            )
+        '''
+        self.velocity_mlp = torch.nn.Sequential(
+            torch.nn.Linear(in_features, hidden_features),
+            activation,
+            torch.nn.Linear(hidden_features, 1, bias=False),
+        )
 
-            torch.nn.init.xavier_uniform_(self.velocity_mlp[2].weight, gain=0.001)
+        torch.nn.init.xavier_uniform_(self.velocity_mlp[2].weight, gain=0.001)
 
         self.semantic_attention_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, n_heads),
@@ -91,7 +94,10 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.v_mixing = torch.nn.Linear(n_coefficients, 1, bias=False)
-        self.log_gamma = torch.nn.Parameter(torch.zeros(n_heads))
+        if isinstance(log_gamma, float):
+            self.log_gamma = torch.nn.Parameter(torch.ones(n_heads) * log_gamma)
+        else:
+            self.log_gamma = torch.nn.Parameter(log_gamma)
 
         self.n_heads = n_heads
         self.n_coefficients = n_coefficients
@@ -143,7 +149,7 @@ class DenseSAKELayer(SAKELayer):
             x_minus_xt_norm.shape[-2],
             x_minus_xt_norm.shape[-2],
             device=x_minus_xt_norm.device
-        ).unsqueeze(-1)
+        ).unsqueeze(-1).detach()
 
         att = torch.nn.functional.softmin(
             _x_minus_xt_norm * self.log_gamma.exp(),
@@ -161,7 +167,7 @@ class DenseSAKELayer(SAKELayer):
             att.shape[-2],
             att.shape[-2],
             device=att.device,
-        ).unsqueeze(-1)
+        ).unsqueeze(-1).detach()
         att = torch.nn.functional.softmax(att, dim=-2)
         return att
 
@@ -216,7 +222,5 @@ class DenseSAKELayer(SAKELayer):
             # v = v - v.mean(dim=-2, keepdim=True)
             x = x + v
          
-        # x_norm_new = x.pow(2).sum(dim=-1, keepdim=True).pow(0.5).sum(dim=-2, keepdim=True)
-        # x = x * x_norm / (x_norm_new + 1e-10)
 
         return h, x, v

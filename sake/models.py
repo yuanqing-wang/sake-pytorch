@@ -87,6 +87,7 @@ class VelocityDenseSAKEModel(torch.nn.Module):
         if isinstance(update_coordinate, bool):
             update_coordinate = [update_coordinate for _ in range(depth)]
 
+
         for idx in range(0, depth):
             self.eq_layers.append(
                 layer(
