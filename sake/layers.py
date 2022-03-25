@@ -86,6 +86,7 @@ class SAKELayer(torch.nn.Module):
         )
 
         self.coefficients_mlp = torch.nn.Linear(n_heads * hidden_features, n_coefficients, bias=False)
+        # self.coefficients_mlp = torch.nn.Identity()
 
         self.post_norm_mlp = torch.nn.Sequential(
             torch.nn.Linear(n_coefficients, hidden_features),
@@ -149,7 +150,7 @@ class DenseSAKELayer(SAKELayer):
             x_minus_xt_norm.shape[-2],
             x_minus_xt_norm.shape[-2],
             device=x_minus_xt_norm.device
-        ).unsqueeze(-1).detach()
+        ).unsqueeze(-1)
 
         att = torch.nn.functional.softmin(
             _x_minus_xt_norm * self.log_gamma.exp(),
@@ -167,7 +168,7 @@ class DenseSAKELayer(SAKELayer):
             att.shape[-2],
             att.shape[-2],
             device=att.device,
-        ).unsqueeze(-1).detach()
+        ).unsqueeze(-1)
         att = torch.nn.functional.softmax(att, dim=-2)
         return att
 
