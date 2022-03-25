@@ -200,9 +200,9 @@ class DenseSAKELayer(SAKELayer):
             h_cat_ht = torch.cat([h_cat_ht, h_e_0], dim=-1)
 
 
-        h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
-        euclidean_attention, semantic_attention, combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
-        h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
+        h_e_0 = self.edge_model(h_cat_ht, x_minus_xt_norm)
+        euclidean_attention, semantic_attention, combined_attention = self.combined_attention(x_minus_xt_norm, h_e_0)
+        h_e_mtx = (h_e_0.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
         h_combinations, delta_v = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, combined_attention, mask=mask)
         delta_v = self.v_mixing(delta_v.transpose(-1, -2)).transpose(-1, -2).mean(dim=(-2, -3))
 
@@ -221,6 +221,6 @@ class DenseSAKELayer(SAKELayer):
             v = delta_v + v
             # v = v - v.mean(dim=-2, keepdim=True)
             x = x + v
-         
 
-        return h, x, v
+
+        return h, x, v, h_e_0

@@ -89,6 +89,11 @@ class VelocityDenseSAKEModel(torch.nn.Module):
 
 
         for idx in range(0, depth):
+            if idx == 0:
+                edge_features = 0
+            else:
+                edge_features = hidden_features
+
             self.eq_layers.append(
                 layer(
                     in_features=hidden_features,
@@ -96,6 +101,7 @@ class VelocityDenseSAKEModel(torch.nn.Module):
                     out_features=hidden_features,
                     update_coordinate=update_coordinate[idx],
                     velocity=True,
+                    edge_features=edge_features,
                     *args, **kwargs,
                 )
             )
@@ -110,7 +116,7 @@ class VelocityDenseSAKEModel(torch.nn.Module):
         x = x - x.mean(dim=-2, keepdim=True)
         h = self.embedding_in(h)
         for idx, eq_layer in enumerate(self.eq_layers):
-            h, x, v = eq_layer(h, x, v, mask=mask, h_e_0=h_e_0)
+            h, x, v, h_e_0 = eq_layer(h, x, v, mask=mask, h_e_0=h_e_0)
         h = self.embedding_out(h)
         return h, x
 
