@@ -200,7 +200,7 @@ class HierarchicalSAKEFlowModel(HamiltonianFlowModel):
             clip: bool=True,
             beta: float=1.0,
         ):
-        
+
         super().__init__()
         self.depth = depth
         self.models = torch.nn.ModuleList()
@@ -224,8 +224,10 @@ class HierarchicalSAKEFlowModel(HamiltonianFlowModel):
         sum_log_det = 0.0
         x = self.prior.sample(shape)
         aux = []
+        noise = []
         for model in self.models:
             v = self.prior.sample(shape)
+            noise.append(v)
             x, v, log_det = model.f_forward(h, x, v)
             aux.append(v)
             aux.append(x)
@@ -237,19 +239,23 @@ class HierarchicalSAKEFlowModel(HamiltonianFlowModel):
         sum_log_det = 0.0
         shape = x.shape
         aux = []
+        noise = []
         for model in self.models[::-1]:
             v = self.prior.sample(shape)
+            noise.append(v)
             x, v, log_det = model.f_backward(h, x, v)
             aux.append(v)
             aux.append(x)
             sum_log_det = sum_log_det + log_det
-        return x, sum_log_det, aux
+        return x, sum_log_det, aux, noise
 
     def nll_backward(self, h, x):
-        x, sum_log_det, aux = self.f_backward(h, x)
+        x, sum_log_det, aux, noise = self.f_backward(h, x)
         aux = torch.stack(aux, dim=0)
+        noise = torch.stack(noise, dim=0)
         nll = -self.prior.log_prob(aux).sum(dim=0).mean()
-        return nll + sum_log_det.mean()
+        nll_noise = self.prior.log_prob(noise).sum(dim=0).mean()
+        return nll + sum_log_det.mean() + nll_noise
 
 class SAKEDynamics(torch.nn.Module):
     def __init__(
