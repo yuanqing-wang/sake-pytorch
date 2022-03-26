@@ -187,6 +187,70 @@ class SAKEFlowModel(HamiltonianFlowModel):
         nll_v = -v_prior.log_prob(v).mean()
         return nll_x + beta * nll_v + sum_log_det_x.mean() + beta * sum_log_det_v.mean()
 
+
+class HierarchicalSAKEFlowModel(HamiltonianFlowModel):
+    def __init__(
+            self,
+            in_features: int,
+            hidden_features: int,
+            depth: int=3,
+            model_depth: int=3,
+            mp_depth: int=3,
+            activation: Callable=torch.nn.SiLU(),
+            clip: bool=True,
+            beta: float=1.0,
+        ):
+        
+        super().__init__()
+        self.depth = depth
+        self.models = torch.nn.ModuleList()
+
+        for _ in range(depth):
+            self.models.append(
+                SAKEFlowModel(
+                    in_features=in_features,
+                    hidden_features=hidden_features,
+                    depth=model_depth,
+                    mp_depth=mp_depth,
+                    activation=activation,
+                    clip=clip,
+                    beta=beta,
+                )
+            )
+
+        self.beta = beta
+
+    def f_forward(self, h, shape):
+        sum_log_det = 0.0
+        x = self.prior.sample(shape)
+        aux = []
+        for model in self.models:
+            v = self.prior.sample(shape)
+            x, v, log_det = model.f_forward(h, x, v)
+            aux.append(v)
+            aux.append(x)
+            sum_log_det = sum_log_det + log_det
+        aux.pop()
+        return x, sum_log_det, aux
+
+    def f_backward(self, h, x):
+        sum_log_det = 0.0
+        shape = x.shape
+        aux = []
+        for model in self.models[::-1]:
+            v = self.prior.sample(shape)
+            x, v, log_det = model.f_backward(h, x, v)
+            aux.append(v)
+            aux.append(x)
+            sum_log_det = sum_log_det + log_det
+        return x, sum_log_det, aux
+
+    def nll_backward(self, h, x):
+        x, sum_log_det, aux = self.f_backward(h, x)
+        aux = torch.stack(aux, dim=0)
+        nll = -self.prior.log_prob(aux).sum(dim=0).mean()
+        return nll + sum_log_det.mean()
+
 class SAKEDynamics(torch.nn.Module):
     def __init__(
             self,
@@ -226,22 +290,11 @@ class SAKEDynamics(torch.nn.Module):
 
 
 
-class CenteredGaussian(torch.distributions.Normal):
+class CenteredGaussian(torch.nn.Module):
     def __init__(self, scale=1.0):
-        super().__init__(loc=0.0, scale=scale)
-        self.device = "cpu"
-
-    def to(self, device):
-        self.loc = self.loc.to(device)
-        self.scale = self.scale.to(device)
-        self.device = device
-        return self
-
-    def cuda(self):
-        return self.to("cuda:0")
-
-    def cpu(self):
-        return self.to("cpu")
+        super().__init__()
+        self.register_buffer("loc", torch.tensor(0.0))
+        self.register_buffer("scale", torch.tensor(scale))
 
     def log_prob(self, value):
         N = value.shape[-2]
@@ -253,13 +306,13 @@ class CenteredGaussian(torch.distributions.Normal):
         return log_px
 
     def sample(self, *args, **kwargs):
-        x = super().sample(*args, **kwargs)
+        x = torch.distributions.Normal(loc=self.loc, scale=self.scale).sample(*args, **kwargs)
         x = x - x.mean(dim=-2, keepdim=True)
         x = x.to(self.device)
         return x
 
     def rsample(self, *args, **kwargs):
-        x = super().rsample(*args, **kwargs)
+        x = torch.distributions.Normal(loc=self.loc, scale=self.scale).rsample(*args, **kwargs)
         x = x - x.mean(dim=-2, keepdim=True)
         x = x.to(self.device)
         return x
