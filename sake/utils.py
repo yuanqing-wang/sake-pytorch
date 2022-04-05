@@ -69,6 +69,8 @@ class RBF(torch.nn.Module):
 
         self.gamma = torch.nn.Parameter(torch.tensor(gamma))
         self.mu = torch.nn.Parameter(torch.tensor(mu))
+        # self.register_buffer("gamma", torch.tensor(gamma))
+        # self.register_buffer("mu", torch.tensor(mu))
         self.out_features = len(mu)
 
     def forward(self, x):
@@ -106,15 +108,14 @@ class ContinuousFilterConvolutionWithConcatenation(torch.nn.Module):
             torch.nn.Linear(in_features + kernel_dimension + 1, out_features),
             activation,
             torch.nn.Linear(out_features, out_features),
-            # activation,
         )
+
 
     def forward(self, h, x):
         h0 = h
         h = self.mlp_in(h)
         _x = self.kernel(x) * h
         h = self.mlp_out(torch.cat([h0, _x, x], dim=-1)) # * (1.0 - torch.eye(x.shape[-2], x.shape[-2], device=x.device).unsqueeze(-1))
-
         return h
 
 class ContinuousFilterConvolutionWithConcatenationRecurrent(torch.nn.Module):
