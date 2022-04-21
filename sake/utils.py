@@ -27,6 +27,36 @@ class PNA(torch.nn.Module):
 
         return x
 
+class CosineCutoff(nn.Module):
+    def __init__(self, cutoff_lower=0.0, cutoff_upper=5.0):
+        super(CosineCutoff, self).__init__()
+        self.cutoff_lower = cutoff_lower
+        self.cutoff_upper = cutoff_upper
+
+    def forward(self, distances):
+        if self.cutoff_lower > 0:
+            cutoffs = 0.5 * (
+                torch.cos(
+                    math.pi
+                    * (
+                        2
+                        * (distances - self.cutoff_lower)
+                        / (self.cutoff_upper - self.cutoff_lower)
+                        + 1.0
+                    )
+                )
+                + 1.0
+            )
+            # remove contributions below the cutoff radius
+            cutoffs = cutoffs * (distances < self.cutoff_upper).float()
+            cutoffs = cutoffs * (distances > self.cutoff_lower).float()
+            return cutoffs
+        else:
+            cutoffs = 0.5 * (torch.cos(distances * math.pi / self.cutoff_upper) + 1.0)
+            # remove contributions beyond the cutoff radius
+            cutoffs = cutoffs * (distances < self.cutoff_upper).float()
+            return cutoffs
+
 class Coloring(torch.nn.Module):
     def __init__(
         self,
@@ -91,13 +121,15 @@ class HardCutOff(torch.nn.Module):
         )
 
 class ExpNormalSmearing(torch.nn.Module):
-    def __init__(self, cutoff_lower=0.0, cutoff_upper=5.0, num_rbf=50, trainable=True):
+    def __init__(self, cutoff_lower=0.0, cutoff_upper=5.0, num_rbf=50, trainable=True, cutoff=True):
         super(ExpNormalSmearing, self).__init__()
         self.cutoff_lower = cutoff_lower
         self.cutoff_upper = cutoff_upper
         self.num_rbf = num_rbf
         self.trainable = trainable
         self.alpha = 5.0 / (cutoff_upper - cutoff_lower)
+        if cuttoff:
+            self.cutoff_fn = CosineCutoff(0, cutoff_upper)
 
         means, betas = self._initial_params()
         if trainable:
@@ -127,7 +159,7 @@ class ExpNormalSmearing(torch.nn.Module):
         self.betas.data.copy_(betas)
 
     def forward(self, dist):
-        return torch.exp(
+        return self.cutoff_fn(dist) * torch.exp(
             -self.betas
             * (torch.exp(self.alpha * (-dist + self.cutoff_lower)) - self.means) ** 2
         )
