@@ -36,7 +36,7 @@ class SAKELayer(torch.nn.Module):
         edge_features: int=0,
         velocity: bool=False,
         tanh: bool=False,
-        log_gamma: float=0.0,
+        log_gamma: Union[float, torch.Tensor]=-torch.linspace(1.0, 5.0, 4).log(),
     ):
         super().__init__()
 
@@ -46,6 +46,7 @@ class SAKELayer(torch.nn.Module):
             torch.nn.Linear(n_heads * hidden_features + hidden_features + in_features, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, out_features),
+            activation,
         )
 
         # self.layer_norm = torch.nn.LayerNorm(out_features)
@@ -61,7 +62,6 @@ class SAKELayer(torch.nn.Module):
         self.out_features = out_features
         self.activation = activation
 
-        '''
         if tanh:
             self.velocity_mlp = torch.nn.Sequential(
                 torch.nn.Linear(in_features, hidden_features),
@@ -71,27 +71,27 @@ class SAKELayer(torch.nn.Module):
             )
 
         else:
-        '''
-        self.velocity_mlp = torch.nn.Sequential(
-            torch.nn.Linear(in_features, hidden_features),
-            activation,
-            torch.nn.Linear(hidden_features, 1, bias=False),
-        )
+            self.velocity_mlp = torch.nn.Sequential(
+                torch.nn.Linear(in_features, hidden_features),
+                activation,
+                torch.nn.Linear(hidden_features, 1, bias=False),
+            )
 
-        torch.nn.init.xavier_uniform_(self.velocity_mlp[2].weight, gain=0.001)
+            torch.nn.init.xavier_uniform_(self.velocity_mlp[2].weight, gain=0.001)
 
         self.semantic_attention_mlp = torch.nn.Sequential(
             torch.nn.Linear(hidden_features, n_heads),
             torch.nn.LeakyReLU(0.2),
         )
 
-        self.coefficients_mlp = torch.nn.Linear(n_heads * hidden_features, n_coefficients, bias=False)
-        # self.coefficients_mlp = torch.nn.Identity()
+        # self.coefficients_mlp = torch.nn.Linear(n_heads * hidden_features, n_coefficients, bias=False)
+        self.coefficients_mlp = torch.nn.Identity()
 
         self.post_norm_mlp = torch.nn.Sequential(
             torch.nn.Linear(n_coefficients, hidden_features),
             activation,
             torch.nn.Linear(hidden_features, hidden_features),
+            activation,
         )
 
         self.v_mixing = torch.nn.Linear(n_coefficients, 1, bias=False)
@@ -200,19 +200,18 @@ class DenseSAKELayer(SAKELayer):
         if self.edge_features > 0 and h_e_0 is not None:
             h_cat_ht = torch.cat([h_cat_ht, h_e_0], dim=-1)
 
+        h_e_mtx = self.edge_model(h_cat_ht, x_minus_xt_norm)
 
-        h_e_0 = self.edge_model(h_cat_ht, x_minus_xt_norm)
-        euclidean_attention, semantic_attention, combined_attention = self.combined_attention(x_minus_xt_norm, h_e_0)
-        h_e_mtx = (h_e_0.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
-        h_combinations, delta_v = self.spatial_attention(h_e_mtx, x_minus_xt, x_minus_xt_norm, combined_attention, mask=mask)
+        euclidean_attention, semantic_attention, combined_attention = self.combined_attention(x_minus_xt_norm, h_e_mtx)
+        h_e_att = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
+        h_combinations, delta_v = self.spatial_attention(h_e_att, x_minus_xt, x_minus_xt_norm, combined_attention, mask=mask)
         delta_v = self.v_mixing(delta_v.transpose(-1, -2)).transpose(-1, -2).mean(dim=(-2, -3))
 
         # h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
-        h_e = self.aggregate(h_e_mtx, mask=mask)
+        h_e = self.aggregate(h_e_att, mask=mask)
         h = self.node_model(h, h_e, h_combinations)
 
         if self.update_coordinate:
-            # delta_v = self.coordinate_model(x, x_minus_xt, h_e_mtx)
 
             if v is not None and self.velocity:
                 v = self.velocity_model(v, h)
@@ -220,8 +219,8 @@ class DenseSAKELayer(SAKELayer):
                 v = torch.zeros_like(x)
 
             v = delta_v + v
-            # v = v - v.mean(dim=-2, keepdim=True)
+
             x = x + v
 
 
-        return h, x, v, h_e_0
+        return h, x, v # .tanh()

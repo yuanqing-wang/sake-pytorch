@@ -87,13 +87,7 @@ class VelocityDenseSAKEModel(torch.nn.Module):
         if isinstance(update_coordinate, bool):
             update_coordinate = [update_coordinate for _ in range(depth)]
 
-
         for idx in range(0, depth):
-            if idx == 0:
-                edge_features = 0
-            else:
-                edge_features = hidden_features
-
             self.eq_layers.append(
                 layer(
                     in_features=hidden_features,
@@ -101,10 +95,11 @@ class VelocityDenseSAKEModel(torch.nn.Module):
                     out_features=hidden_features,
                     update_coordinate=update_coordinate[idx],
                     velocity=True,
-                    edge_features=edge_features,
                     *args, **kwargs,
                 )
             )
+
+            edge_features = hidden_features
 
     def forward(
             self,
@@ -113,10 +108,9 @@ class VelocityDenseSAKEModel(torch.nn.Module):
             v: Union[None, torch.Tensor]=None,
             h_e_0: Union[None, torch.Tensor]=None,
         ):
-        x = x - x.mean(dim=-2, keepdim=True)
         h = self.embedding_in(h)
         for idx, eq_layer in enumerate(self.eq_layers):
-            h, x, v, h_e_0 = eq_layer(h, x, v, mask=mask, h_e_0=h_e_0)
+                h, x, v = eq_layer(h, x, v, mask=mask)
         h = self.embedding_out(h)
         return h, x
 
