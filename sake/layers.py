@@ -67,7 +67,6 @@ class SAKELayer(torch.nn.Module):
                 torch.nn.Linear(in_features, hidden_features),
                 activation,
                 torch.nn.Linear(hidden_features, 1, bias=False),
-                torch.nn.Tanh(),
             )
 
         else:
@@ -207,7 +206,6 @@ class DenseSAKELayer(SAKELayer):
         h_combinations, delta_v = self.spatial_attention(h_e_att, x_minus_xt, x_minus_xt_norm, combined_attention, mask=mask)
         delta_v = self.v_mixing(delta_v.transpose(-1, -2)).transpose(-1, -2).mean(dim=(-2, -3))
 
-        # h_e_mtx = (h_e_mtx.unsqueeze(-1) * combined_attention.unsqueeze(-2)).flatten(-2, -1)
         h_e = self.aggregate(h_e_att, mask=mask)
         h = self.node_model(h, h_e, h_combinations)
 

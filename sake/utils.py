@@ -1,6 +1,7 @@
 import torch
 from typing import Callable
 import numpy as np
+import math
 
 AGGREGATORS = {
     'sum': torch.sum,
@@ -27,7 +28,7 @@ class PNA(torch.nn.Module):
 
         return x
 
-class CosineCutoff(nn.Module):
+class CosineCutoff(torch.nn.Module):
     def __init__(self, cutoff_lower=0.0, cutoff_upper=5.0):
         super(CosineCutoff, self).__init__()
         self.cutoff_lower = cutoff_lower
@@ -121,14 +122,14 @@ class HardCutOff(torch.nn.Module):
         )
 
 class ExpNormalSmearing(torch.nn.Module):
-    def __init__(self, cutoff_lower=0.0, cutoff_upper=5.0, num_rbf=50, trainable=True, cutoff=True):
+    def __init__(self, cutoff_lower=0.0, cutoff_upper=5.0, num_rbf=50, trainable=True, cutoff=False):
         super(ExpNormalSmearing, self).__init__()
         self.cutoff_lower = cutoff_lower
         self.cutoff_upper = cutoff_upper
         self.num_rbf = num_rbf
         self.trainable = trainable
         self.alpha = 5.0 / (cutoff_upper - cutoff_lower)
-        if cuttoff:
+        if cutoff:
             self.cutoff_fn = CosineCutoff(0, cutoff_upper)
 
         means, betas = self._initial_params()
@@ -159,7 +160,7 @@ class ExpNormalSmearing(torch.nn.Module):
         self.betas.data.copy_(betas)
 
     def forward(self, dist):
-        return self.cutoff_fn(dist) * torch.exp(
+        return torch.exp(
             -self.betas
             * (torch.exp(self.alpha * (-dist + self.cutoff_lower)) - self.means) ** 2
         )
@@ -183,7 +184,10 @@ class ContinuousFilterConvolutionWithConcatenation(torch.nn.Module):
             torch.nn.Linear(in_features + kernel_dimension + 1, out_features),
             activation,
             torch.nn.Linear(out_features, out_features),
+            # activation,
+            # torch.nn.Linear(out_features, out_features),
         )
+        
 
 
     def forward(self, h, x):
