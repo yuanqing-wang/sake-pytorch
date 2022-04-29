@@ -45,7 +45,7 @@ def run(args):
             hidden_features=args.hidden_features,
             depth=args.depth,
             out_features=1, 
-            n_coefficients=args.n_coefficients,
+            n_coefficients=args.hidden_features * args.n_heads,
             distance_filter=sake.utils.ContinuousFilterConvolutionWithConcatenation,
             update_coordinate=True,
             activation=torch.nn.SiLU(),
@@ -110,13 +110,14 @@ def run(args):
     for idx_epoch in range(int(args.n_epoch)):
         model.train()
         idxs = torch.randperm(n_tr)
-        
-        if idx_epoch < 1000:
+        '''
+        if idx_epoch < 2000:
             batch_size = 16
-        elif idx_epoch < 2000:
+        elif idx_epoch < 4000:
             batch_size = 4
         else:
             batch_size = 1
+        '''
 
         _i = i.repeat(batch_size, 1, 1)
 
@@ -127,22 +128,21 @@ def run(args):
 
             optimizer.zero_grad()
 
-            with autocast():
-                e_tr_pred, _ = model(_i, _x_tr)
-                e_tr_pred = e_tr_pred.sum(dim=1)
-                e_tr_pred = coloring(e_tr_pred)
+            e_tr_pred, _ = model(_i, _x_tr)
+            e_tr_pred = e_tr_pred.sum(dim=1)
+            e_tr_pred = coloring(e_tr_pred)
 
-                f_tr_pred = -1.0 * torch.autograd.grad(
-                    e_tr_pred.sum(),
-                    _x_tr,
-                    create_graph=True,
-                )[0]
+            f_tr_pred = -1.0 * torch.autograd.grad(
+                e_tr_pred.sum(),
+                _x_tr,
+                create_graph=True,
+            )[0]
 
-                loss = torch.nn.L1Loss()(_f_tr, f_tr_pred) + 0.001 * torch.nn.L1Loss()(_e_tr, e_tr_pred)
+            loss = torch.nn.L1Loss()(_f_tr, f_tr_pred) + 0.001 * torch.nn.L1Loss()(_e_tr, e_tr_pred)
+            
+            loss.backward()
+            optimizer.step()
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
 
         if idx_epoch % 10 ==0:
             model.eval()

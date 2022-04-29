@@ -184,6 +184,7 @@ class ContinuousFilterConvolutionWithConcatenation(torch.nn.Module):
             torch.nn.Linear(in_features + kernel_dimension + 1, out_features),
             activation,
             torch.nn.Linear(out_features, out_features),
+            activation,
             # activation,
             # torch.nn.Linear(out_features, out_features),
         )

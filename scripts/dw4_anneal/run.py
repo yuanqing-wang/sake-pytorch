@@ -23,9 +23,10 @@ def run(args):
     from sake.flow import SAKEFlowModel, CenteredGaussian
     model = SAKEFlowModel(
             1, args.width, depth=args.depth, mp_depth=args.mp_depth,
-            # log_gamma=data_train.norm(dim=(-1, -2), keepdim=True).mean().log()
     )
     
+    print(model)
+
     x_prior = CenteredGaussian()
     v_prior = CenteredGaussian()
 
@@ -39,7 +40,7 @@ def run(args):
     min_loss_vl = 1000.0
     min_loss_te = 1000.0
 
-    for idx_epoch in range(50000):
+    for idx_epoch in range(500000):
         x = data_train
         x = x - x.mean(dim=-2, keepdim=True)
         h = torch.zeros(x.shape[0], 4, 1)
@@ -49,7 +50,7 @@ def run(args):
         optimizer.zero_grad()
         for _ in range(args.cumulation):
             v = v_prior.sample(x.shape)
-            loss = model.nll_backward(h, x, v, x_prior, v_prior)
+            loss = model.nll_backward(h, x, v, x_prior, v_prior, beta=min((idx_epoch/50000.0), 1.0))
             loss.backward()
         optimizer.step()
 
@@ -91,10 +92,10 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--depth", type=int, default=16)
-    parser.add_argument("--mp_depth", type=int, default=2)
+    parser.add_argument("--depth", type=int, default=8)
+    parser.add_argument("--mp_depth", type=int, default=3)
     parser.add_argument("--width", type=int, default=32)
-    parser.add_argument("--weight_decay", type=float, default=1e-5)
+    parser.add_argument("--weight_decay", type=float, default=1e-12)
     parser.add_argument("--cumulation", type=int, default=2)
     parser.add_argument("--n_data", type=int, default=100)
     args = parser.parse_args()

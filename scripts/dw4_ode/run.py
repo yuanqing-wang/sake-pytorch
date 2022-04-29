@@ -21,6 +21,11 @@ def run(args):
     data_val = data_val - data_val.mean(dim=-2, keepdim=True)
     data_test = data_test - data_test.mean(dim=-2, keepdim=True)
 
+    if torch.cuda.is_available():
+        data_train = data_train.cuda()
+        data_val = data_val.cuda()
+        data_test = data_test.cuda()
+
     from sake.flow import SAKEDynamics, CenteredGaussian
     dynamics = SAKEDynamics(args.width, depth=args.depth)
     model = FFJORD(dynamics, trace_method="hutch", hutch_noise='bernoulli')
@@ -30,23 +35,38 @@ def run(args):
         x_prior = x_prior.cuda()
         model = model.cuda()
 
-    optimizer = torch.optim.Adam(model.parameters(), args.lr/args.cumulation, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(model.parameters(), args.lr, weight_decay=args.weight_decay)
 
     for idx_epoch in range(50000):
         x = data_train
         x = x - x.mean(dim=-2, keepdim=True)
-        h = torch.zeros(x.shape[0], 4, 1)
-        if torch.cuda.is_available():
-            x = x.cuda()
-            h = h.cuda()
         optimizer.zero_grad()
         z, delta_logp, reg_term = model(x)
         log_pz = x_prior.log_prob(z)
         log_px = (log_pz + delta_logp.view(-1)).mean()
         loss = -log_px
         loss.backward()
-        print(loss)
         optimizer.step()
+
+        if idx_epoch % 100 == 0:
+            x = data_val
+            z, delta_logp, reg_term = model(x)
+            log_pz = x_prior.log_prob(z)
+            log_px = (log_pz + delta_logp.view(-1)).mean()
+            loss_vl = -log_px
+
+            x = data_test
+            z, delta_logp, reg_term = model(x)
+            log_pz = x_prior.log_prob(z)
+            log_px = (log_pz + delta_logp.view(-1)).mean()
+            loss_te = -log_px
+
+            print(idx_epoch, loss, loss_vl, loss_te, flush=True)
+
+
+
+
+
 
 if __name__ == "__main__":
     import argparse
@@ -55,7 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--depth", type=int, default=3)
     parser.add_argument("--mp_depth", type=int, default=3)
     parser.add_argument("--width", type=int, default=32)
-    parser.add_argument("--weight_decay", type=float, default=1e-5)
+    parser.add_argument("--weight_decay", type=float, default=0.0)
     parser.add_argument("--cumulation", type=int, default=2)
     parser.add_argument("--n_data", type=int, default=100)
     args = parser.parse_args()

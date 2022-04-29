@@ -20,18 +20,11 @@ def run(args):
     data_val = data_val - data_val.mean(dim=-2, keepdim=True)
     data_test = data_test - data_test.mean(dim=-2, keepdim=True)
 
-    from sake.flow import SAKEFlowModel, CenteredGaussian
-    model = SAKEFlowModel(
-            1, args.width, depth=args.depth, mp_depth=args.mp_depth,
-            # log_gamma=data_train.norm(dim=(-1, -2), keepdim=True).mean().log()
-    )
+    from sake.flow import HierarchicalSAKEFlowModel, CenteredGaussian
+    model = HierarchicalSAKEFlowModel(1, 64)
     
-    x_prior = CenteredGaussian()
-    v_prior = CenteredGaussian()
 
     if torch.cuda.is_available():
-        x_prior = x_prior.cuda()
-        v_prior = v_prior.cuda()
         model = model.cuda()
 
     optimizer = torch.optim.Adam(model.parameters(), args.lr/args.cumulation, weight_decay=args.weight_decay)
@@ -48,8 +41,7 @@ def run(args):
             h = h.cuda()
         optimizer.zero_grad()
         for _ in range(args.cumulation):
-            v = v_prior.sample(x.shape)
-            loss = model.nll_backward(h, x, v, x_prior, v_prior)
+            loss = model.nll_backward(h, x)
             loss.backward()
         optimizer.step()
 
@@ -62,24 +54,21 @@ def run(args):
                 if torch.cuda.is_available():
                     h = h.cuda()
                     x = x.cuda()
-                v = v_prior.sample(x.shape)
-                loss_tr = (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
+                loss_tr = model.nll_backward(h, x).item()
 
                 x = data_val[100*idx:100*idx+100]
                 h = torch.zeros(x.shape[0], 4, 1)
                 if torch.cuda.is_available():
                     h = h.cuda()
                     x = x.cuda()
-                v = v_prior.sample(x.shape)
-                loss_vl += (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
+                loss_vl += model.nll_backward(h, x).item()
 
                 x = data_test[100*idx:100*idx+100]
                 h = torch.zeros(x.shape[0], 4, 1)
-                v = v_prior.sample(x.shape)
                 if torch.cuda.is_available():
                     h = h.cuda()
                     x = x.cuda()
-                loss_te += (model.nll_backward(h, x, v, x_prior, v_prior) + v_prior.log_prob(v).mean()).item()
+                loss_te += model.nll_backward(h, x).item()
 
 
             loss_vl *= 0.1
@@ -91,8 +80,8 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--depth", type=int, default=16)
-    parser.add_argument("--mp_depth", type=int, default=2)
+    parser.add_argument("--depth", type=int, default=3)
+    parser.add_argument("--mp_depth", type=int, default=3)
     parser.add_argument("--width", type=int, default=32)
     parser.add_argument("--weight_decay", type=float, default=1e-5)
     parser.add_argument("--cumulation", type=int, default=2)
