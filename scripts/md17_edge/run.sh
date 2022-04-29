@@ -1,8 +1,8 @@
-for name in malonaldehyde azobenzene naphthalene paracetamol malonaldehyde benzene_old malonaldehyde ethanol toluene salicylic aspirin uracil
+for name in malonaldehyde # azobenzene naphthalene paracetamol malonaldehyde benzene_old malonaldehyde ethanol toluene salicylic aspirin uracil
 do
     for learning_rate in 1e-3 # 1e-3 # 5e-3 1e-3 5e-4 1e-4 5e-5 1e-5
     do
-        for depth in 8 # 3 4 5 6 7 8  # 4 5 6 7 8
+        for depth in 8 # 3 4 5 6 7 8 # 9 10 11 12 13 14 15 16 # 3 4 5 6 7 8  # 4 5 6 7 8
         do
             for hidden_features in 64 # 16 32 64 128 256 # 128 256 512  # 512 1024 # 128 # 32 64 128 256 512 # 256
             do
@@ -12,7 +12,7 @@ do
                     do
                         for n_heads in 4
                         do
-                            for batch_size in 4 # 1 2 4 8 16
+                            for batch_size in 4 # 4 8 16 # 1 2 4 8 16
                             do
 
 
@@ -28,7 +28,7 @@ do
         --batch_size $batch_size \
         --n_coefficients $n_coefficients \
         --n_heads $n_heads \
-        --out $name
+        --out edge
     done
 done
 done

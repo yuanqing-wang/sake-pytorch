@@ -50,6 +50,7 @@ def run(args):
             update_coordinate=True,
             activation=torch.nn.SiLU(),
             n_heads=args.n_heads,
+            log_gamma=-torch.linspace(1.0, 5.0, args.n_heads).log(),
             # tanh=True,
     )
    

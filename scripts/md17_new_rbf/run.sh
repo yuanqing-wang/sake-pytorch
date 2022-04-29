@@ -1,4 +1,4 @@
-for name in malonaldehyde azobenzene naphthalene paracetamol malonaldehyde benzene_old malonaldehyde ethanol toluene salicylic aspirin uracil
+for name in malonaldehyde # azobenzene naphthalene paracetamol malonaldehyde benzene_old malonaldehyde ethanol toluene salicylic aspirin uracil
 do
     for learning_rate in 1e-3 # 1e-3 # 5e-3 1e-3 5e-4 1e-4 5e-5 1e-5
     do
@@ -28,7 +28,7 @@ do
         --batch_size $batch_size \
         --n_coefficients $n_coefficients \
         --n_heads $n_heads \
-        --out $name
+        --out "original"
     done
 done
 done

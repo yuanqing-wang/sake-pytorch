@@ -1,6 +1,7 @@
 import torch
 from typing import Callable
 import numpy as np
+import math
 
 AGGREGATORS = {
     'sum': torch.sum,
@@ -26,6 +27,36 @@ class PNA(torch.nn.Module):
         )
 
         return x
+
+class CosineCutoff(torch.nn.Module):
+    def __init__(self, cutoff_lower=0.0, cutoff_upper=5.0):
+        super(CosineCutoff, self).__init__()
+        self.cutoff_lower = cutoff_lower
+        self.cutoff_upper = cutoff_upper
+
+    def forward(self, distances):
+        if self.cutoff_lower > 0:
+            cutoffs = 0.5 * (
+                torch.cos(
+                    math.pi
+                    * (
+                        2
+                        * (distances - self.cutoff_lower)
+                        / (self.cutoff_upper - self.cutoff_lower)
+                        + 1.0
+                    )
+                )
+                + 1.0
+            )
+            # remove contributions below the cutoff radius
+            cutoffs = cutoffs * (distances < self.cutoff_upper).float()
+            cutoffs = cutoffs * (distances > self.cutoff_lower).float()
+            return cutoffs
+        else:
+            cutoffs = 0.5 * (torch.cos(distances * math.pi / self.cutoff_upper) + 1.0)
+            # remove contributions beyond the cutoff radius
+            cutoffs = cutoffs * (distances < self.cutoff_upper).float()
+            return cutoffs
 
 class Coloring(torch.nn.Module):
     def __init__(
@@ -69,6 +100,8 @@ class RBF(torch.nn.Module):
 
         self.gamma = torch.nn.Parameter(torch.tensor(gamma))
         self.mu = torch.nn.Parameter(torch.tensor(mu))
+        # self.register_buffer("gamma", torch.tensor(gamma))
+        # self.register_buffer("mu", torch.tensor(mu))
         self.out_features = len(mu)
 
     def forward(self, x):
@@ -88,33 +121,81 @@ class HardCutOff(torch.nn.Module):
             1e-14,
         )
 
+class ExpNormalSmearing(torch.nn.Module):
+    def __init__(self, cutoff_lower=0.0, cutoff_upper=5.0, num_rbf=50, trainable=True, cutoff=False):
+        super(ExpNormalSmearing, self).__init__()
+        self.cutoff_lower = cutoff_lower
+        self.cutoff_upper = cutoff_upper
+        self.num_rbf = num_rbf
+        self.trainable = trainable
+        self.alpha = 5.0 / (cutoff_upper - cutoff_lower)
+        if cutoff:
+            self.cutoff_fn = CosineCutoff(0, cutoff_upper)
+
+        means, betas = self._initial_params()
+        if trainable:
+            self.register_parameter("means", torch.nn.Parameter(means))
+            self.register_parameter("betas", torch.nn.Parameter(betas))
+        else:
+            self.register_buffer("means", means)
+            self.register_buffer("betas", betas)
+
+        self.out_features = self.num_rbf
+
+    def _initial_params(self):
+        # initialize means and betas according to the default values in PhysNet
+        # https://pubs.acs.org/doi/10.1021/acs.jctc.9b00181
+        start_value = torch.exp(
+            torch.scalar_tensor(-self.cutoff_upper + self.cutoff_lower)
+        )
+        means = torch.linspace(start_value, 1, self.num_rbf)
+        betas = torch.tensor(
+            [(2 / self.num_rbf * (1 - start_value)) ** -2] * self.num_rbf
+        )
+        return means, betas
+
+    def reset_parameters(self):
+        means, betas = self._initial_params()
+        self.means.data.copy_(means)
+        self.betas.data.copy_(betas)
+
+    def forward(self, dist):
+        return torch.exp(
+            -self.betas
+            * (torch.exp(self.alpha * (-dist + self.cutoff_lower)) - self.means) ** 2
+        )
+
+
 class ContinuousFilterConvolutionWithConcatenation(torch.nn.Module):
     def __init__(
         self,
         in_features: int,
         out_features: int,
         activation: Callable=torch.nn.SiLU(),
-        kernel: Callable=RBF(),
+        kernel: Callable=ExpNormalSmearing,
     ):
         super(ContinuousFilterConvolutionWithConcatenation, self).__init__()
         self.in_features = in_features
         self.out_features = out_features
-        self.kernel = kernel
-        kernel_dimension = kernel.out_features
+        self.kernel = kernel()
+        kernel_dimension = self.kernel.out_features
         self.mlp_in = torch.nn.Linear(in_features, kernel_dimension)
         self.mlp_out = torch.nn.Sequential(
             torch.nn.Linear(in_features + kernel_dimension + 1, out_features),
             activation,
-            # torch.nn.Linear(out_features, out_features),
+            torch.nn.Linear(out_features, out_features),
+            activation,
             # activation,
+            # torch.nn.Linear(out_features, out_features),
         )
+        
+
 
     def forward(self, h, x):
         h0 = h
         h = self.mlp_in(h)
-        _x = self.kernel(x)
+        _x = self.kernel(x) * h
         h = self.mlp_out(torch.cat([h0, _x, x], dim=-1)) # * (1.0 - torch.eye(x.shape[-2], x.shape[-2], device=x.device).unsqueeze(-1))
-
         return h
 
 class ContinuousFilterConvolutionWithConcatenationRecurrent(torch.nn.Module):

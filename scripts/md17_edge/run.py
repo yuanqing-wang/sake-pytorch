@@ -45,7 +45,7 @@ def run(args):
             hidden_features=args.hidden_features,
             depth=args.depth,
             out_features=1, 
-            n_coefficients=args.n_coefficients,
+            n_coefficients=args.hidden_features * args.n_heads,
             distance_filter=sake.utils.ContinuousFilterConvolutionWithConcatenation,
             update_coordinate=True,
             activation=torch.nn.SiLU(),
@@ -110,13 +110,14 @@ def run(args):
     for idx_epoch in range(int(args.n_epoch)):
         model.train()
         idxs = torch.randperm(n_tr)
-        
-        if idx_epoch < 1000:
+        '''
+        if idx_epoch < 2000:
             batch_size = 16
-        elif idx_epoch < 2000:
+        elif idx_epoch < 4000:
             batch_size = 4
         else:
             batch_size = 1
+        '''
 
         _i = i.repeat(batch_size, 1, 1)
 
